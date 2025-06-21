@@ -1,0 +1,406 @@
+
+import { useState, useEffect } from 'react';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/hooks/useAuth";
+import CreateLoanModal from "@/components/CreateLoanModal";
+import { LoanRequestModal } from "@/components/LoanRequestModal";
+import AgreementList from "@/components/AgreementList";
+import TransactionHistory from "@/components/TransactionHistory";
+import NotificationSystem from "@/components/NotificationSystem";
+import { useToast } from "@/components/ui/use-toast";
+import { supabase } from '@/integrations/supabase/client';
+import { formatCurrency } from "@/utils/currency";
+import { 
+  DollarSign, 
+  TrendingUp, 
+  Users, 
+  FileText, 
+  Plus, 
+  Bell,
+  Settings,
+  LogOut,
+  Star,
+  CreditCard,
+  Activity
+} from "lucide-react";
+
+interface LoanRequest {
+  id: string;
+  borrowerName: string;
+  amount: number;
+  purpose: string;
+  requestDate: string;
+}
+
+interface DashboardStats {
+  totalLent: number;
+  totalBorrowed: number;
+  activeLoans: number;
+  completedLoans: number;
+}
+
+const Dashboard = () => {
+  const { user, logout } = useAuth();
+  const { toast } = useToast();
+  const [showCreateLoan, setShowCreateLoan] = useState(false);
+  const [showLoanRequest, setShowLoanRequest] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);  const [stats, setStats] = useState<DashboardStats>({
+    totalLent: 0,
+    totalBorrowed: 0,
+    activeLoans: 0,
+    completedLoans: 0
+  });
+  const [pendingRequests, setPendingRequests] = useState<LoanRequest[]>([]);
+  const [agreements, setAgreements] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (user) {
+      fetchDashboardData();
+    }
+  }, [user]);
+
+  const fetchDashboardData = async () => {
+    if (!user) return;
+
+    try {
+      // Fetch loan agreements where user is lender or borrower
+      const { data: agreements, error } = await supabase
+        .from('loan_agreements')
+        .select('*')
+        .or(`lender_id.eq.${user.id},borrower_id.eq.${user.id}`);
+
+      if (error) throw error;
+
+      // Calculate stats
+      let totalLent = 0;
+      let totalBorrowed = 0;
+      let activeLoans = 0;
+      let completedLoans = 0;
+      const requests: LoanRequest[] = [];
+
+      agreements?.forEach(agreement => {
+        // Convert string amount to number for calculations
+        const amount = parseFloat(agreement.amount.toString());
+        
+        if (agreement.lender_id === user.id) {
+          // User is the lender
+          totalLent += amount;
+          if (agreement.status === 'active') activeLoans++;
+          if (agreement.status === 'completed') completedLoans++;
+        } else if (agreement.borrower_id === user.id) {
+          // User is the borrower
+          totalBorrowed += amount;
+          if (agreement.status === 'active') activeLoans++;
+          if (agreement.status === 'completed') completedLoans++;
+        }
+
+        // Add pending requests where user is lender
+        if (agreement.lender_id === user.id && agreement.status === 'pending') {
+          requests.push({
+            id: agreement.id,
+            borrowerName: agreement.borrower_name || 'Unknown',
+            amount: amount,
+            purpose: agreement.purpose || 'No purpose specified',
+            requestDate: agreement.created_at
+          });
+        }
+      });      setStats({ totalLent, totalBorrowed, activeLoans, completedLoans });
+      setPendingRequests(requests);
+      setAgreements(agreements || []);
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load dashboard data.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewRequest = (request: LoanRequest) => {
+    setSelectedRequest(request);
+    setShowLoanRequest(true);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Error logging out:', error);
+      toast({
+        title: "Error",
+        description: "Failed to log out. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-green-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">L</span>
+                </div>
+                <span className="text-xl font-bold text-gray-900">Lendit</span>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <Button variant="ghost" size="sm">
+                <Bell className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm">
+                <Settings className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleLogout}>
+                <LogOut className="h-4 w-4" />
+              </Button>
+              
+              <div className="flex items-center space-x-2">
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-900">{user?.name}</p>
+                  <p className="text-xs text-gray-500">Score: {user?.reputationScore}</p>
+                </div>
+                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-green-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">
+                    {user?.name?.charAt(0)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Welcome Section */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">
+            Welcome back, {user?.name?.split(' ')[0]}! 👋
+          </h1>
+          <p className="text-gray-600 mt-2">
+            Manage your lending activities and track your reputation
+          </p>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="mb-8">
+          <div className="flex flex-wrap gap-4">
+            <Button 
+              onClick={() => setShowCreateLoan(true)}
+              className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Lend Money
+            </Button>
+            <Button variant="outline">
+              <Users className="mr-2 h-4 w-4" />
+              View Contacts
+            </Button>
+            <Button variant="outline">
+              <FileText className="mr-2 h-4 w-4" />
+              My Agreements
+            </Button>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Lent</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(stats.totalLent)}</div>
+              <p className="text-xs text-muted-foreground">
+                Active lending portfolio
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Borrowed</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(stats.totalBorrowed)}</div>
+              <p className="text-xs text-muted-foreground">
+                Active borrowing
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Loans</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.activeLoans}</div>
+              <p className="text-xs text-muted-foreground">
+                Currently ongoing
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Reputation Score</CardTitle>
+              <Star className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{user?.reputationScore}/100</div>
+              <Progress value={user?.reputationScore} className="mt-2" />
+            </CardContent>
+          </Card>
+        </div>        {/* Main Content with Tabs */}
+        <Tabs defaultValue="overview" className="space-y-6">          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="agreements">Agreements</TabsTrigger>
+            <TabsTrigger value="transactions">Transactions</TabsTrigger>
+            <TabsTrigger value="notifications">Notifications</TabsTrigger>
+            <TabsTrigger value="requests">Requests</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Left Column - Quick Stats */}
+              <div className="lg:col-span-1">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Quick Actions</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <Button 
+                      onClick={() => setShowCreateLoan(true)}
+                      className="w-full bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create New Loan
+                    </Button>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Active Loans</span>
+                        <span className="font-medium">{stats.activeLoans}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Completed</span>
+                        <span className="font-medium">{stats.completedLoans}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Pending Requests</span>
+                        <span className="font-medium">{pendingRequests.length}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Right Column - Recent Activity */}
+              <div className="lg:col-span-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Recent Activity</CardTitle>
+                    <CardDescription>Your latest lending and borrowing activities</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-gray-500">View your agreements tab for detailed information.</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>          <TabsContent value="agreements">
+            <AgreementList 
+              agreements={agreements} 
+              currentUserId={user?.id || ''} 
+              onUpdate={fetchDashboardData}
+            />
+          </TabsContent>
+
+          <TabsContent value="transactions">
+            <TransactionHistory userId={user?.id || ''} />
+          </TabsContent>
+
+          <TabsContent value="notifications">
+            <NotificationSystem userId={user?.id || ''} />
+          </TabsContent>
+
+          <TabsContent value="requests">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  Pending Loan Requests
+                  <Badge variant="secondary">{pendingRequests.length}</Badge>
+                </CardTitle>
+                <CardDescription>
+                  People who want to borrow from you
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {pendingRequests.length > 0 ? (
+                  pendingRequests.map((request) => (
+                    <div 
+                      key={request.id}
+                      className="border rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                      onClick={() => handleViewRequest(request)}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-medium">{request.borrowerName}</h4>
+                        <Badge variant="outline">{formatCurrency(request.amount)}</Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">{request.purpose}</p>
+                      <p className="text-xs text-gray-500">
+                        Requested on {new Date(request.requestDate).toLocaleDateString()}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-12">
+                    <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-600 mb-2">No pending requests</h3>
+                    <p className="text-gray-500">
+                      When people request loans from you, they will appear here.
+                    </p>
+                  </div>
+                )}              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      <CreateLoanModal open={showCreateLoan} onOpenChange={setShowCreateLoan} />
+      {selectedRequest && (
+        <LoanRequestModal 
+          open={showLoanRequest} 
+          onOpenChange={setShowLoanRequest}
+          request={selectedRequest}
+        />
+      )}
+    </div>
+  );
+};
+
+export default Dashboard;
