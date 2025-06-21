@@ -11,6 +11,7 @@ import { LoanRequestModal } from "@/components/LoanRequestModal";
 import AgreementList from "@/components/AgreementList";
 import TransactionHistory from "@/components/TransactionHistory";
 import NotificationSystem from "@/components/NotificationSystem";
+import Preloader from "@/components/Preloader";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from "@/utils/currency";
@@ -150,9 +151,10 @@ const Dashboard = () => {
       </div>
     );
   }
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <>
+      <Preloader />
+      <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -394,12 +396,12 @@ const Dashboard = () => {
       <CreateLoanModal open={showCreateLoan} onOpenChange={setShowCreateLoan} />
       {selectedRequest && (
         <LoanRequestModal 
-          open={showLoanRequest} 
-          onOpenChange={setShowLoanRequest}
+          open={showLoanRequest}          onOpenChange={setShowLoanRequest}
           request={selectedRequest}
         />
       )}
     </div>
+    </>
   );
 };
 
