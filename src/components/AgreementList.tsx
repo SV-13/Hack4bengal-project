@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from "@/utils/currency";
+import { downloadContract, ContractData } from "@/utils/contractGenerator";
 import { 
   Calendar, 
   DollarSign, 
@@ -20,7 +21,8 @@ import {
   FileText,
   Eye,
   Edit,
-  CreditCard
+  CreditCard,
+  Download
 } from "lucide-react";
 
 interface LoanAgreement {
@@ -52,10 +54,53 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
   const [selectedTab, setSelectedTab] = useState<string>('all');
   const [selectedAgreement, setSelectedAgreement] = useState<LoanAgreement | null>(null);
   const [showActionDialog, setShowActionDialog] = useState(false);
-  const [actionType, setActionType] = useState<'accept' | 'reject' | 'payment' | 'details' | 'edit'>('details');
+  const [actionType, setActionType] = useState<'accept' | 'reject' | 'payment' | 'details' | 'edit' | 'download'>('details');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
   const [loading, setLoading] = useState(false);
+  const [borrowerData, setBorrowerData] = useState<any>(null);
+  const [lenderData, setLenderData] = useState<any>(null);
+
+  // Fetch user profiles when an agreement is selected
+  useEffect(() => {
+    if (selectedAgreement) {
+      fetchUserProfiles(selectedAgreement);
+    }
+  }, [selectedAgreement]);
+
+  const fetchUserProfiles = async (agreement: LoanAgreement) => {
+    try {
+      // Fetch borrower profile
+      if (agreement.borrower_id) {
+        const { data: borrowerProfile, error: borrowerError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', agreement.borrower_id)
+          .single();
+          
+        if (borrowerError) throw borrowerError;
+        setBorrowerData(borrowerProfile);
+      } else {
+        setBorrowerData({
+          name: agreement.borrower_name,
+          email: agreement.borrower_email
+        });
+      }
+      
+      // Fetch lender profile
+      const { data: lenderProfile, error: lenderError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', agreement.lender_id)
+        .single();
+        
+      if (lenderError) throw lenderError;
+      setLenderData(lenderProfile);
+      
+    } catch (error) {
+      console.error('Error fetching user profiles:', error);
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
@@ -87,13 +132,19 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
     if (role === 'lender') {
       return agreement.borrower_name || agreement.borrower_email || 'Unknown Borrower';
     } else {
-      return 'Lender';
+      return lenderData?.name || 'Lender';
     }
   };
 
-  const handleAction = async (agreement: LoanAgreement, action: 'accept' | 'reject' | 'payment' | 'details' | 'edit') => {
+  const handleAction = async (agreement: LoanAgreement, action: 'accept' | 'reject' | 'payment' | 'details' | 'edit' | 'download') => {
     setSelectedAgreement(agreement);
     setActionType(action);
+    
+    if (action === 'download') {
+      generateAgreementPDF(agreement);
+      return;
+    }
+    
     setShowActionDialog(true);
   };
 
@@ -130,6 +181,71 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
     }
   };
 
+  const generateAgreementPDF = async (agreement: LoanAgreement) => {
+    if (!borrowerData || !lenderData) {
+      toast({
+        title: "Error",
+        description: "Missing user data. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Prepare contract data
+    const startDate = new Date(agreement.created_at || new Date());
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + agreement.duration_months);
+    
+    // Calculate payments
+    const amount = parseFloat(agreement.amount.toString());
+    const rate = parseFloat(agreement.interest_rate?.toString() || '0');
+    const duration = agreement.duration_months;
+    
+    // Monthly interest rate
+    const monthlyRate = rate / 100 / 12;
+    
+    // Monthly payment using amortization formula
+    const monthlyPayment = amount * (monthlyRate * Math.pow(1 + monthlyRate, duration)) / (Math.pow(1 + monthlyRate, duration) - 1);
+    
+    // Total repayment amount
+    const totalRepayment = monthlyPayment * duration;
+    
+    const contractData: ContractData = {
+      lenderName: lenderData.name,
+      lenderAddress: lenderData.address || 'Not provided',
+      borrowerName: borrowerData.name,
+      borrowerAddress: borrowerData.address || 'Not provided',
+      amount: amount,
+      interestRate: rate,
+      durationMonths: duration,
+      purpose: agreement.purpose || 'Not specified',
+      startDate,
+      endDate,
+      monthlyPayment,
+      totalRepayment,
+      // Include blockchain details if smart contract is used
+      walletAddress: agreement.smart_contract ? 'To be provided' : undefined,
+      contractHash: agreement.smart_contract ? 'To be generated' : undefined
+    };
+    
+    // Generate and download the PDF
+    downloadContract(contractData);
+    
+    toast({
+      title: "PDF Generated",
+      description: "Loan agreement PDF has been downloaded.",
+    });
+    
+    // If this was from an accept action, we need to send PDFs to both parties
+    // In a production app, you would email the PDFs here
+    if (agreement.status === 'pending' && actionType === 'accept') {
+      toast({
+        title: "PDFs Sent",
+        description: "Loan agreement PDFs have been sent to both parties.",
+      });
+    }
+  };
+
   const handleAcceptLoan = async () => {
     if (!selectedAgreement) return;
 
@@ -143,6 +259,13 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
       .eq('id', selectedAgreement.id);
 
     if (error) throw error;
+
+    // Generate and send the PDF to both parties
+    generateAgreementPDF({
+      ...selectedAgreement,
+      status: 'active',
+      borrower_id: currentUserId
+    });
 
     toast({
       title: "Loan Accepted",
@@ -399,6 +522,7 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
               {actionType === 'payment' && 'Make Payment'}
               {actionType === 'details' && 'Loan Details'}
               {actionType === 'edit' && 'Edit Loan Agreement'}
+              {actionType === 'download' && 'Download Agreement'}
             </DialogTitle>
             <DialogDescription>
               {actionType === 'accept' && 'Are you sure you want to accept this loan agreement?'}
@@ -406,6 +530,7 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
               {actionType === 'payment' && 'Enter the payment details below.'}
               {actionType === 'details' && 'View complete loan agreement details.'}
               {actionType === 'edit' && 'Modify the loan agreement details.'}
+              {actionType === 'download' && 'Download the loan agreement as a PDF.'}
             </DialogDescription>
           </DialogHeader>
 

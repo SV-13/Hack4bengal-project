@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
+import { useWeb3 } from "@/contexts/Web3Context";
 import CreateLoanModal from "@/components/CreateLoanModal";
 import { LoanRequestModal } from "@/components/LoanRequestModal";
 import AgreementList from "@/components/AgreementList";
@@ -25,7 +25,8 @@ import {
   LogOut,
   Star,
   CreditCard,
-  Activity
+  Activity,
+  Wallet
 } from "lucide-react";
 
 interface LoanRequest {
@@ -45,6 +46,15 @@ interface DashboardStats {
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
+  const { 
+    account, 
+    isConnected, 
+    connectWallet, 
+    disconnectWallet, 
+    balance, 
+    networkName, 
+    loading: web3Loading 
+  } = useWeb3();
   const { toast } = useToast();
   const [showCreateLoan, setShowCreateLoan] = useState(false);
   const [showLoanRequest, setShowLoanRequest] = useState(false);
@@ -202,9 +212,7 @@ const Dashboard = () => {
           <p className="text-gray-600 mt-2">
             Manage your lending activities and track your reputation
           </p>
-        </div>
-
-        {/* Quick Actions */}
+        </div>        {/* Quick Actions */}
         <div className="mb-8">
           <div className="flex flex-wrap gap-4">
             <Button 
@@ -214,6 +222,39 @@ const Dashboard = () => {
               <Plus className="mr-2 h-4 w-4" />
               Lend Money
             </Button>
+            
+            {/* Wallet Connection Button */}
+            {!isConnected ? (
+              <Button 
+                onClick={connectWallet}
+                variant="outline"
+                disabled={web3Loading}
+                className="border-orange-300 text-orange-600 hover:bg-orange-50"
+              >
+                <Wallet className="mr-2 h-4 w-4" />
+                {web3Loading ? 'Connecting...' : 'Connect Wallet'}
+              </Button>            ) : (
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => setShowCreateLoan(true)}
+                  variant="outline"
+                  className="border-green-300 text-green-600 hover:bg-green-50"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Crypto Loan
+                </Button>
+                <Button 
+                  onClick={disconnectWallet}
+                  variant="outline"
+                  size="sm"
+                  className="border-green-300 text-green-600 hover:bg-green-50"
+                >
+                  <Wallet className="mr-2 h-4 w-4" />
+                  {account?.slice(0, 6)}...{account?.slice(-4)}
+                </Button>
+              </div>
+            )}
+            
             <Button variant="outline">
               <Users className="mr-2 h-4 w-4" />
               View Contacts
@@ -224,6 +265,65 @@ const Dashboard = () => {
             </Button>
           </div>
         </div>
+
+        {/* Wallet Status Card - Add this before Stats Cards */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Wallet className="mr-2 h-5 w-5" />
+              Wallet & Payment Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Wallet Connection */}
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <p className="text-sm font-medium">Wallet Connection</p>
+                  <p className="text-xs text-gray-500">
+                    {isConnected ? `Connected: ${account?.slice(0, 6)}...${account?.slice(-4)}` : 'Not Connected'}
+                  </p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Badge variant={isConnected ? "default" : "outline"}>
+                    {isConnected ? 'Connected' : 'Disconnected'}
+                  </Badge>
+                  {!isConnected && (
+                    <Button size="sm" onClick={connectWallet} disabled={web3Loading}>
+                      {web3Loading ? 'Connecting...' : 'Connect'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Network Status */}
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <p className="text-sm font-medium">Network</p>
+                  <p className="text-xs text-gray-500">
+                    {networkName || 'Unknown Network'}
+                  </p>
+                </div>
+                <Badge variant={networkName === 'localhost' ? "default" : "outline"}>
+                  {networkName || 'Not Connected'}
+                </Badge>
+              </div>
+
+              {/* Balance */}
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <p className="text-sm font-medium">ETH Balance</p>
+                  <p className="text-xs text-gray-500">
+                    {balance ? `${parseFloat(balance).toFixed(4)} ETH` : '0.0000 ETH'}
+                  </p>
+                </div>
+                <Badge variant={balance && parseFloat(balance) > 0 ? "default" : "outline"}>
+                  {balance && parseFloat(balance) > 0 ? 'Funded' : 'No Balance'}
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -264,20 +364,31 @@ const Dashboard = () => {
                 Currently ongoing
               </p>
             </CardContent>
-          </Card>
-          
-          <Card>
+          </Card>          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Reputation Score</CardTitle>
-              <Star className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Wallet Status</CardTitle>
+              <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{user?.reputationScore}/100</div>
-              <Progress value={user?.reputationScore} className="mt-2" />
+              <div className="text-2xl font-bold">
+                {isConnected ? (
+                  <span className="text-green-600">Connected</span>
+                ) : (
+                  <span className="text-gray-500">Disconnected</span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {isConnected 
+                  ? `${networkName} • ${balance?.slice(0, 6)} ETH`
+                  : 'Connect for crypto loans'
+                }
+              </p>
             </CardContent>
           </Card>
-        </div>        {/* Main Content with Tabs */}
-        <Tabs defaultValue="overview" className="space-y-6">          <TabsList className="grid w-full grid-cols-5">
+        </div>
+
+        {/* Main Content with Tabs */}
+        <Tabs defaultValue="overview" className="space-y-6"><TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="agreements">Agreements</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
