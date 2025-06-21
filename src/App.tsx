@@ -9,7 +9,6 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { Web3Provider } from "@/contexts/Web3Context";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import Index from "./pages/Index";
-import PaymentTestPage from "./pages/PaymentTestPage";
 import LoanOfferPage from "./pages/LoanOfferPage";
 import NotFound from "./pages/NotFound";
 
@@ -38,16 +37,12 @@ const App = () => {
         <AuthProvider>
           <Web3Provider>
             <BrowserRouter>
-              <Suspense fallback={<LoadingSpinner />}>
-                <Routes>
+              <Suspense fallback={<LoadingSpinner />}>                <Routes>
                   {/* Main Landing Page */}
                   <Route path="/" element={<Index />} />
                   
                   {/* Loan Management Routes */}
                   <Route path="/loan-offer/:agreementId" element={<LoanOfferPage />} />
-                  
-                  {/* Payment & Testing Routes */}
-                  <Route path="/payment-test" element={<PaymentTestPage />} />
                   
                   {/* Authentication Routes - handled by AuthModal in Index */}
                   <Route path="/login" element={<Index />} />
