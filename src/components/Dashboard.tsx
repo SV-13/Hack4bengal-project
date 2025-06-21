@@ -11,6 +11,8 @@ import { LoanRequestModal } from "@/components/LoanRequestModal";
 import { RequestLoanModal } from "@/components/RequestLoanModal";
 import { BrowseLoanRequests } from "@/components/BrowseLoanRequests";
 import { MyLoanRequests } from "@/components/MyLoanRequests";
+import { LoanManagementDashboard } from "@/components/LoanManagementDashboard";
+import { EnhancedNotificationSystem } from "@/components/EnhancedNotificationSystem";
 import AgreementList from "@/components/AgreementList";
 import TransactionHistory from "@/components/TransactionHistory";
 import NotificationSystem from "@/components/NotificationSystem";
@@ -406,14 +408,15 @@ const Dashboard = () => {  const { user, logout } = useAuth();
         </div>
 
         {/* Main Content with Tabs */}
-        <Tabs defaultValue="overview" className="space-y-6">          <TabsList className="grid w-full grid-cols-7">
+        <Tabs defaultValue="overview" className="space-y-6">          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="browse">Browse Requests</TabsTrigger>
+            <TabsTrigger value="management">Manage</TabsTrigger>
+            <TabsTrigger value="browse">Browse</TabsTrigger>
             <TabsTrigger value="my-requests">My Requests</TabsTrigger>
             <TabsTrigger value="agreements">Agreements</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="requests">Requests to Me</TabsTrigger>
+            <TabsTrigger value="requests">Requests</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -469,7 +472,11 @@ const Dashboard = () => {  const { user, logout } = useAuth();
                   </CardContent>
                 </Card>
               </div>            </div>
-          </TabsContent>          <TabsContent value="my-requests">
+          </TabsContent>          <TabsContent value="management">
+            <LoanManagementDashboard />
+          </TabsContent>
+
+          <TabsContent value="my-requests">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
@@ -510,11 +517,9 @@ const Dashboard = () => {  const { user, logout } = useAuth();
 
           <TabsContent value="transactions">
             <TransactionHistory userId={user?.id || ''} />
-          </TabsContent>
-
-          <TabsContent value="notifications">
-            <NotificationSystem userId={user?.id || ''} />
-          </TabsContent>          <TabsContent value="requests">
+          </TabsContent>          <TabsContent value="notifications">
+            <EnhancedNotificationSystem />
+          </TabsContent><TabsContent value="requests">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">

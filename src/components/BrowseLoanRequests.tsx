@@ -54,21 +54,56 @@ export const BrowseLoanRequests = ({ onOfferLoan }: BrowseLoanRequestsProps) => 
 
   useEffect(() => {
     fetchLoanRequests();
-  }, []);
-
-  const fetchLoanRequests = async () => {
+  }, []);  const fetchLoanRequests = async () => {
     try {
       setLoading(true);
-        const { data, error } = await supabase
+      
+      // Get loan requests from loan_agreements table where no lender is assigned
+      const { data: requestData, error: requestError } = await supabase
         .from('loan_agreements')
         .select('*')
         .eq('status', 'pending')
-        .is('lender_id', null) // Only show requests without assigned lenders
-        .neq('borrower_id', user?.id); // Don't show user's own requests
+        .is('lender_id', null) // Only requests without lenders
+        .neq('borrower_id', user?.id || '') // Don't show user's own requests
+        .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (requestError) throw requestError;
 
-      setRequests(data || []);
+      // Filter only loan requests (not regular agreements) and transform data
+      const transformedData = (requestData || [])
+        .filter(item => {
+          try {
+            const conditions = JSON.parse(item.conditions || '{}');
+            return conditions.type === 'loan_request';
+          } catch {
+            return false;
+          }
+        })
+        .map(item => {
+          const parsedConditions = JSON.parse(item.conditions || '{}');
+          return {
+            id: item.id,
+            borrower_id: item.borrower_id,
+            borrower_name: item.borrower_name,
+            borrower_email: item.borrower_email,
+            amount: item.amount,
+            purpose: item.purpose,
+            duration_months: item.duration_months,
+            interest_rate: item.interest_rate || 10, // Use existing rate or default
+            conditions: JSON.stringify({
+              collateral: parsedConditions.collateral || '',
+              monthlyIncome: parsedConditions.monthlyIncome || 0,
+              employmentStatus: parsedConditions.employmentStatus || '',
+              creditScore: parsedConditions.creditScore || 0,
+              description: parsedConditions.description || ''
+            }),
+            status: item.status,
+            created_at: item.created_at,
+            lender_id: item.lender_id
+          };
+        });
+
+      setRequests(transformedData);
     } catch (error: any) {
       console.error('Error fetching loan requests:', error);
       toast({

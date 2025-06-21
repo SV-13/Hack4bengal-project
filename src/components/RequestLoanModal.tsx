@@ -47,33 +47,60 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
         });
         return;
       }      // Create loan request in database using existing loan_agreements table
-      // We'll mark it as a "request" type to distinguish from regular agreements
       const { data, error } = await supabase
         .from('loan_agreements')
         .insert({
+          lender_id: null, // No lender yet, this is a request
           borrower_id: user.id,
           borrower_name: user.name,
           borrower_email: user.email,
           amount: parseFloat(formData.amount),
-          purpose: formData.purpose,
+          interest_rate: parseFloat(formData.interestRate) || 10, // Default 10%
           duration_months: parseInt(formData.duration),
-          interest_rate: parseFloat(formData.interestRate) || 0,
+          purpose: formData.purpose,
+          status: 'pending', // Request status
           conditions: JSON.stringify({
-            collateral: formData.collateral || null,
+            collateral: formData.collateral,
             monthly_income: parseFloat(formData.monthlyIncome) || null,
-            employment_status: formData.employmentStatus || null,
+            employment_status: formData.employmentStatus,
             credit_score: parseInt(formData.creditScore) || null,
-            description: formData.description || null,
-            type: 'loan_request' // Mark this as a loan request
+            description: formData.description,
+            type: 'loan_request' // Mark as loan request
           }),
-          status: 'pending',
-          lender_id: null, // No lender assigned yet
-          lender_name: null,
-          lender_email: null,
-          created_at: new Date().toISOString()
-        });
+          created_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // Create notification for potential lenders
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: user.id,
+          type: 'loan_request_created',
+          title: 'Loan Request Created',
+          message: `Your loan request for ₹${formData.amount} has been posted successfully.`,
+          data: { agreement_id: data.id },
+        });      toast({
+        title: "Loan Request Created!",
+        description: `Your request for ₹${formData.amount} has been posted. Lenders will be able to view and respond to your request.`,
+      });
+
+      // Reset form and close modal
+      setFormData({
+        amount: '',
+        purpose: '',
+        duration: '',
+        interestRate: '',
+        collateral: '',
+        monthlyIncome: '',
+        employmentStatus: '',
+        creditScore: '',
+        description: ''
+      });
+      onOpenChange(false);
 
       toast({
         title: "Loan Request Submitted",
