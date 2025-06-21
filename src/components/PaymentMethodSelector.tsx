@@ -7,7 +7,15 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { PaymentMethod as PaymentMethodType } from '@/utils/paymentProcessing';
+import { useToast } from "@/hooks/use-toast";
+import { 
+  PaymentMethod as PaymentMethodType, 
+  PaymentDetails as PaymentDetailsType, 
+  PaymentResult,
+  processPayment
+} from '@/utils/paymentProcessing';
+import { formatCurrency } from '@/utils/currency';
+import { getCryptoPrices } from '@/utils/cryptoProcessor';
 import { 
   Smartphone, 
   Building2, 
@@ -17,8 +25,53 @@ import {
   Shield,
   AlertCircle,
   Check,
-  Loader2
+  CheckCircle,
+  Loader2,
+  Clock,
+  Copy,
+  QrCode
 } from "lucide-react";
+
+// Local payment method capabilities function
+const getPaymentMethodCapabilities = () => {
+  return {
+    upi: {
+      name: 'UPI',
+      instant: true,
+      maxAmount: 100000, // ₹1 lakh
+      fees: 0,
+      description: 'Instant payment via UPI apps'
+    },
+    bank: {
+      name: 'Bank Transfer',
+      instant: false,
+      maxAmount: 10000000, // ₹1 crore
+      fees: 0,
+      description: 'NEFT/RTGS/IMPS bank transfer'
+    },
+    wallet: {
+      name: 'Digital Wallet',
+      instant: true,
+      maxAmount: 200000, // ₹2 lakhs
+      fees: 0,
+      description: 'Paytm, PhonePe, Google Pay, etc.'
+    },
+    crypto: {
+      name: 'Cryptocurrency',
+      instant: false,
+      maxAmount: Number.MAX_SAFE_INTEGER,
+      fees: 'Variable',
+      description: 'ETH, USDT, BTC payments'
+    },
+    cash: {
+      name: 'Cash',
+      instant: true,
+      maxAmount: 200000, // ₹2 lakhs (regulatory limit)
+      fees: 0,
+      description: 'Physical cash payment'
+    }
+  };
+};
 
 interface PaymentMethodInfo {
   id: PaymentMethodType;
@@ -27,50 +80,65 @@ interface PaymentMethodInfo {
   description: string;
   processingTime: string;
   fees: string;
+  maxAmount?: number;
+  instant?: boolean;
 }
 
-const paymentMethods: PaymentMethodInfo[] = [
-  {
-    id: 'upi',
-    name: 'UPI',
-    icon: <Smartphone className="h-5 w-5" />,
-    description: 'Pay using any UPI app like GPay, PhonePe, Paytm',
-    processingTime: 'Instant',
-    fees: 'Free'
-  },
-  {
-    id: 'bank',
-    name: 'Bank Transfer',
-    icon: <Building2 className="h-5 w-5" />,
-    description: 'Direct bank account transfer via NEFT/IMPS',
-    processingTime: '2-24 hours',
-    fees: 'Free'
-  },
-  {
-    id: 'wallet',
-    name: 'Digital Wallet',
-    icon: <Wallet className="h-5 w-5" />,
-    description: 'Paytm, Amazon Pay, or other digital wallets',
-    processingTime: 'Instant',
-    fees: '1-2%'
-  },
-  {
-    id: 'crypto',
-    name: 'Cryptocurrency',
-    icon: <Bitcoin className="h-5 w-5" />,
-    description: 'Pay with Bitcoin, Ethereum, or other cryptocurrencies',
-    processingTime: '10-60 minutes',
-    fees: 'Network fees apply'
-  },
-  {
-    id: 'cash',
-    name: 'Cash',
-    icon: <Banknote className="h-5 w-5" />,
-    description: 'In-person cash transaction',
-    processingTime: 'Instant',
-    fees: 'Free'
-  }
-];
+// Get dynamic payment method info from capabilities
+const getPaymentMethods = (): PaymentMethodInfo[] => {
+  const capabilities = getPaymentMethodCapabilities();
+  return [
+    {
+      id: 'upi',
+      name: capabilities.upi.name,
+      icon: <Smartphone className="h-5 w-5" />,
+      description: capabilities.upi.description,
+      processingTime: capabilities.upi.instant ? 'Instant' : '2-4 hours',
+      fees: 'Free',
+      maxAmount: capabilities.upi.maxAmount,
+      instant: capabilities.upi.instant
+    },
+    {
+      id: 'bank',
+      name: capabilities.bank.name,
+      icon: <Building2 className="h-5 w-5" />,
+      description: capabilities.bank.description,
+      processingTime: capabilities.bank.instant ? 'Instant' : '2-24 hours',
+      fees: 'Free',
+      maxAmount: capabilities.bank.maxAmount,
+      instant: capabilities.bank.instant
+    },
+    {
+      id: 'wallet',
+      name: capabilities.wallet.name,
+      icon: <Wallet className="h-5 w-5" />,
+      description: capabilities.wallet.description,
+      processingTime: capabilities.wallet.instant ? 'Instant' : '2-4 hours',
+      fees: 'Free',
+      maxAmount: capabilities.wallet.maxAmount,
+      instant: capabilities.wallet.instant
+    },
+    {
+      id: 'crypto',
+      name: capabilities.crypto.name,
+      icon: <Bitcoin className="h-5 w-5" />,
+      description: capabilities.crypto.description,
+      processingTime: '5-30 minutes',
+      fees: 'Network fees apply',
+      maxAmount: capabilities.crypto.maxAmount,
+      instant: capabilities.crypto.instant
+    },
+    {
+      id: 'cash',
+      name: capabilities.cash.name,
+      icon: <Banknote className="h-5 w-5" />,
+      description: capabilities.cash.description,
+      processingTime: 'Instant',
+      fees: 'Free',
+      maxAmount: capabilities.cash.maxAmount,
+      instant: capabilities.cash.instant    }
+  ];
+};
 
 interface PaymentDetails {
   upiId?: string;
@@ -108,6 +176,9 @@ export const PaymentMethodSelector = ({
 }: PaymentMethodSelectorProps) => {
   const [paymentDetails, setPaymentDetails] = useState<PaymentDetails>({});
   const [isValid, setIsValid] = useState<boolean>(false);
+  
+  // Get payment methods with current capabilities
+  const paymentMethods = getPaymentMethods();
 
   // Validation functions
   const validateUPI = (upiId: string): boolean => {

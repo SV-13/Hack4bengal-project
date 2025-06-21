@@ -78,62 +78,75 @@ export const Web3Provider = React.memo(({ children }: { children: ReactNode }) =
   const infuraProvider = useMemo(() => new JsonRpcProvider(INFURA_ENDPOINT), []);
 
   const isConnected = useMemo(() => Boolean(provider && account), [provider, account]);
-
   // Handle account changes
   const handleAccountsChanged = useCallback(async (accounts: string[]) => {
+    console.log('Accounts changed:', accounts);
     if (accounts.length === 0) {
       // User disconnected their wallet
       disconnectWallet();
     } else if (accounts[0] !== account) {
       setAccount(accounts[0]);
       if (provider instanceof BrowserProvider) {
-        const balance = await provider.getBalance(accounts[0]);
-        setBalance(formatEther(balance));
+        try {
+          const balance = await provider.getBalance(accounts[0]);
+          setBalance(formatEther(balance));
+        } catch (error) {
+          console.error('Error fetching balance:', error);
+        }
       }
     }
-  }, [account, provider]);
+  }, [account, provider]); // Keep dependencies minimal
 
   // Handle chain changes
   const handleChainChanged = useCallback((chainIdHex: string) => {
     window.location.reload();
   }, []);
-
-  // Effect to setup listeners for wallet events
+  // Effect to setup listeners for wallet events and check for existing connection
   useEffect(() => {
-    if (window.ethereum) {
-      window.ethereum.on('accountsChanged', handleAccountsChanged);
-      window.ethereum.on('chainChanged', handleChainChanged);
-      
-      // Check if already connected
-      if (localStorage.getItem('walletConnected') === 'true') {
-        connectWallet().catch(console.error);
+    let isSubscribed = true;
+    
+    const setupWallet = async () => {
+      if (window.ethereum) {
+        // Add event listeners
+        window.ethereum.on('accountsChanged', handleAccountsChanged);
+        window.ethereum.on('chainChanged', handleChainChanged);
+        
+        // Check if already connected
+        if (localStorage.getItem('walletConnected') === 'true') {
+          try {
+            const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+            if (accounts.length > 0 && isSubscribed) {
+              await connectWallet();
+            }
+          } catch (error) {
+            console.error('Error checking existing connection:', error);
+            localStorage.removeItem('walletConnected');
+          }
+        }
       }
-    }
+      
+      // Set default network name
+      if (isSubscribed) {
+        setNetworkName('Ethereum Mainnet');
+      }
+    };
+    
+    setupWallet();
     
     return () => {
+      isSubscribed = false;
       if (window.ethereum) {
         window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
         window.ethereum.removeListener('chainChanged', handleChainChanged);
       }
     };
-  }, [handleAccountsChanged, handleChainChanged]);
-
-  // Initialize provider with Infura on component mount
-  useEffect(() => {
-    try {
-      console.log('Initializing Infura provider...');
-      setNetworkName('Ethereum Mainnet');
-      
-      // Check if we have a connected account from a previous session
-      if (localStorage.getItem('walletConnected') === 'true' && window.ethereum) {
-        connectWallet().catch(console.error);
-      }
-    } catch (error) {
-      console.error('Failed to initialize Infura provider:', error);
-    }
-  }, []);
-
+  }, []); // Remove dependencies to prevent circular calls
   const connectWallet = useCallback(async () => {
+    if (loading) {
+      console.log('Wallet connection already in progress...');
+      return;
+    }
+    
     try {
       console.log('Attempting to connect wallet...');
       setLoading(true);
@@ -145,6 +158,10 @@ export const Web3Provider = React.memo(({ children }: { children: ReactNode }) =
       // Request account access
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       
+      if (accounts.length === 0) {
+        throw new Error('No accounts found');
+      }
+      
       // Create ethers provider
       const browserProvider = new BrowserProvider(window.ethereum);
       const network = await browserProvider.getNetwork();
@@ -154,6 +171,7 @@ export const Web3Provider = React.memo(({ children }: { children: ReactNode }) =
       const connectedAccount = accounts[0];
       const accountBalance = await browserProvider.getBalance(connectedAccount);
       
+      // Update state in batch to prevent multiple renders
       setProvider(browserProvider);
       setSigner(ethersSigner);
       setAccount(connectedAccount);
@@ -172,6 +190,7 @@ export const Web3Provider = React.memo(({ children }: { children: ReactNode }) =
       return connectedAccount;
     } catch (error: any) {
       console.error('Error connecting wallet:', error);
+      localStorage.removeItem('walletConnected');
       toast({
         title: "Connection Failed",
         description: error.message || 'Failed to connect wallet',
@@ -181,15 +200,15 @@ export const Web3Provider = React.memo(({ children }: { children: ReactNode }) =
     } finally {
       setLoading(false);
     }
-  }, [toast]);
-
+  }, [toast, loading]); // Remove excessive dependencies
   const disconnectWallet = useCallback(() => {
+    console.log('Disconnecting wallet...');
     setProvider(null);
     setSigner(null);
     setAccount(null);
     setBalance('0');
     setChainId(null);
-    setNetworkName('Unknown Network');
+    setNetworkName('Ethereum Mainnet'); // Keep default network name
     localStorage.removeItem('walletConnected');
     
     toast({

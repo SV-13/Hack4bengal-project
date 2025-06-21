@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { useWeb3 } from "@/contexts/Web3Context";
 import CreateLoanModal from "@/components/CreateLoanModal";
 import { LoanRequestModal } from "@/components/LoanRequestModal";
+import { RequestLoanModal } from "@/components/RequestLoanModal";
+import { BrowseLoanRequests } from "@/components/BrowseLoanRequests";
+import { MyLoanRequests } from "@/components/MyLoanRequests";
 import AgreementList from "@/components/AgreementList";
 import TransactionHistory from "@/components/TransactionHistory";
 import NotificationSystem from "@/components/NotificationSystem";
@@ -45,8 +48,8 @@ interface DashboardStats {
   completedLoans: number;
 }
 
-const Dashboard = () => {
-  const { user, logout } = useAuth();
+const Dashboard = () => {  const { user, logout } = useAuth();
+  const web3Context = useWeb3();
   const { 
     account, 
     isConnected, 
@@ -55,11 +58,19 @@ const Dashboard = () => {
     balance, 
     networkName, 
     loading: web3Loading 
-  } = useWeb3();
-  const { toast } = useToast();
+  } = web3Context;
+  
+  // Memoize wallet display values to prevent unnecessary re-renders
+  const walletDisplayValues = useMemo(() => ({
+    isConnected,
+    account: account ? `${account.slice(0, 6)}...${account.slice(-4)}` : null,
+    balance: balance ? `${parseFloat(balance).toFixed(4)} ETH` : '0.0000 ETH',
+    networkName: networkName || 'Unknown Network'
+  }), [isConnected, account, balance, networkName]);  const { toast } = useToast();
   const [showCreateLoan, setShowCreateLoan] = useState(false);
+  const [showRequestLoan, setShowRequestLoan] = useState(false);
   const [showLoanRequest, setShowLoanRequest] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);  const [stats, setStats] = useState<DashboardStats>({
+  const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);const [stats, setStats] = useState<DashboardStats>({
     totalLent: 0,
     totalBorrowed: 0,
     activeLoans: 0,
@@ -210,9 +221,8 @@ const Dashboard = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">
             Welcome back, {user?.name?.split(' ')[0]}! 👋
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Manage your lending activities and track your reputation
+          </h1>          <p className="text-gray-600 mt-2">
+            Manage your lending and borrowing activities and track your reputation
           </p>
         </div>        {/* Quick Actions */}
         <div className="mb-8">
@@ -223,6 +233,14 @@ const Dashboard = () => {
             >
               <Plus className="mr-2 h-4 w-4" />
               Lend Money
+            </Button>
+            
+            <Button 
+              onClick={() => setShowRequestLoan(true)}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+            >
+              <DollarSign className="mr-2 h-4 w-4" />
+              Request Loan
             </Button>
             
             {/* Wallet Connection Button */}
@@ -266,9 +284,7 @@ const Dashboard = () => {
               My Agreements
             </Button>
           </div>
-        </div>
-
-        {/* Wallet Status Card - Add this before Stats Cards */}
+        </div>        {/* Wallet Status Card - Add this before Stats Cards */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -283,14 +299,14 @@ const Dashboard = () => {
                 <div>
                   <p className="text-sm font-medium">Wallet Connection</p>
                   <p className="text-xs text-gray-500">
-                    {isConnected ? `Connected: ${account?.slice(0, 6)}...${account?.slice(-4)}` : 'Not Connected'}
+                    {walletDisplayValues.isConnected ? `Connected: ${walletDisplayValues.account}` : 'Not Connected'}
                   </p>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <Badge variant={isConnected ? "default" : "outline"}>
-                    {isConnected ? 'Connected' : 'Disconnected'}
+                  <Badge variant={walletDisplayValues.isConnected ? "default" : "outline"}>
+                    {walletDisplayValues.isConnected ? 'Connected' : 'Disconnected'}
                   </Badge>
-                  {!isConnected && (
+                  {!walletDisplayValues.isConnected && (
                     <Button size="sm" onClick={connectWallet} disabled={web3Loading}>
                       {web3Loading ? 'Connecting...' : 'Connect'}
                     </Button>
@@ -303,11 +319,11 @@ const Dashboard = () => {
                 <div>
                   <p className="text-sm font-medium">Network</p>
                   <p className="text-xs text-gray-500">
-                    {networkName || 'Unknown Network'}
+                    {walletDisplayValues.networkName}
                   </p>
                 </div>
-                <Badge variant={networkName === 'localhost' ? "default" : "outline"}>
-                  {networkName || 'Not Connected'}
+                <Badge variant={walletDisplayValues.networkName === 'localhost' ? "default" : "outline"}>
+                  {walletDisplayValues.networkName}
                 </Badge>
               </div>
 
@@ -316,7 +332,7 @@ const Dashboard = () => {
                 <div>
                   <p className="text-sm font-medium">ETH Balance</p>
                   <p className="text-xs text-gray-500">
-                    {balance ? `${parseFloat(balance).toFixed(4)} ETH` : '0.0000 ETH'}
+                    {walletDisplayValues.balance}
                   </p>
                 </div>
                 <Badge variant={balance && parseFloat(balance) > 0 ? "default" : "outline"}>
@@ -390,12 +406,14 @@ const Dashboard = () => {
         </div>
 
         {/* Main Content with Tabs */}
-        <Tabs defaultValue="overview" className="space-y-6"><TabsList className="grid w-full grid-cols-5">
+        <Tabs defaultValue="overview" className="space-y-6">          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="browse">Browse Requests</TabsTrigger>
+            <TabsTrigger value="my-requests">My Requests</TabsTrigger>
             <TabsTrigger value="agreements">Agreements</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="requests">Requests</TabsTrigger>
+            <TabsTrigger value="requests">Requests to Me</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -406,13 +424,20 @@ const Dashboard = () => {
                   <CardHeader>
                     <CardTitle>Quick Actions</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <Button 
+                  <CardContent className="space-y-4">                    <Button 
                       onClick={() => setShowCreateLoan(true)}
                       className="w-full bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
                     >
                       <Plus className="mr-2 h-4 w-4" />
-                      Create New Loan
+                      Lend Money
+                    </Button>
+                    
+                    <Button 
+                      onClick={() => setShowRequestLoan(true)}
+                      className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                    >
+                      <DollarSign className="mr-2 h-4 w-4" />
+                      Request Loan
                     </Button>
                     <div className="space-y-3">
                       <div className="flex justify-between">
@@ -443,9 +468,39 @@ const Dashboard = () => {
                     <p className="text-gray-500">View your agreements tab for detailed information.</p>
                   </CardContent>
                 </Card>
-              </div>
-            </div>
-          </TabsContent>          <TabsContent value="agreements">
+              </div>            </div>
+          </TabsContent>          <TabsContent value="my-requests">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  My Loan Requests
+                  <Button 
+                    onClick={() => setShowRequestLoan(true)}
+                    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    New Request
+                  </Button>
+                </CardTitle>
+                <CardDescription>
+                  Track the status of your loan requests
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MyLoanRequests onCreateNew={() => setShowRequestLoan(true)} />
+              </CardContent>
+            </Card>
+          </TabsContent>          <TabsContent value="browse">
+            <BrowseLoanRequests onOfferLoan={(request) => {
+              // Handle making an offer on a loan request
+              toast({
+                title: "Feature Coming Soon",
+                description: `Loan offer system for ${request.borrower_name}'s request is being developed.`,
+              });
+            }} />
+          </TabsContent>
+
+          <TabsContent value="agreements">
             <AgreementList 
               agreements={agreements} 
               currentUserId={user?.id || ''} 
@@ -459,13 +514,11 @@ const Dashboard = () => {
 
           <TabsContent value="notifications">
             <NotificationSystem userId={user?.id || ''} />
-          </TabsContent>
-
-          <TabsContent value="requests">
+          </TabsContent>          <TabsContent value="requests">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  Pending Loan Requests
+                  Loan Requests to Me
                   <Badge variant="secondary">{pendingRequests.length}</Badge>
                 </CardTitle>
                 <CardDescription>
@@ -502,9 +555,8 @@ const Dashboard = () => {
             </Card>
           </TabsContent>
         </Tabs>
-      </div>
-
-      <CreateLoanModal open={showCreateLoan} onOpenChange={setShowCreateLoan} />
+      </div>      <CreateLoanModal open={showCreateLoan} onOpenChange={setShowCreateLoan} />
+      <RequestLoanModal open={showRequestLoan} onOpenChange={setShowRequestLoan} />
       {selectedRequest && (
         <LoanRequestModal 
           open={showLoanRequest}          onOpenChange={setShowLoanRequest}

@@ -191,9 +191,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(false);
       throw error;
     }
-  };
-
-  const signUp = async (name: string, email: string, password: string) => {
+  };  const signUp = async (name: string, email: string, password: string) => {
     setLoading(true);
     try {
       const { error } = await supabase.auth.signUp({
@@ -227,9 +225,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(false);
       throw error;
     }
-  };
-
-  const loginWithGoogle = async () => {
+  };  const loginWithGoogle = async () => {
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOAuth({
