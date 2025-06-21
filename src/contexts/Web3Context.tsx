@@ -1,8 +1,12 @@
 
-import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback, useEffect } from 'react';
+import { BrowserProvider, Contract, formatEther, parseEther, JsonRpcSigner, JsonRpcProvider } from 'ethers';
+import { useToast } from '@/components/ui/use-toast';
+import { generateLoanAgreementContract } from '@/utils/contractGenerator';
 
-// Temporarily disable ethers to test if it's causing CSP issues
-// import { BrowserProvider, Contract, formatEther, parseEther } from 'ethers';
+// Infura configuration
+const INFURA_API_KEY = import.meta.env.VITE_INFURA_API_KEY || '888eafbec3984d1b9a18e559634ace1e';
+const INFURA_ENDPOINT = `https://mainnet.infura.io/v3/${INFURA_API_KEY}`;
 
 // Extend Window interface to include ethereum
 declare global {
@@ -12,23 +16,41 @@ declare global {
 }
 
 interface Web3ContextType {
-  provider: any | null;
+  provider: BrowserProvider | JsonRpcProvider | null;
+  signer: JsonRpcSigner | null;
   account: string | null;
   isConnected: boolean;
   balance: string;
+  chainId: string | null;
+  networkName: string;
   connectWallet: () => Promise<void>;
   disconnectWallet: () => void;
   createLoanContract: (loanDetails: LoanContractParams) => Promise<string>;
   loading: boolean;
+  infuraProvider: JsonRpcProvider;
 }
 
-interface LoanContractParams {
+export interface LoanContractParams {
   borrowerAddress: string;
   amount: string;
   interestRate: number;
   durationMonths: number;
   purpose: string;
 }
+
+// ABI for the loan contract
+const LOAN_CONTRACT_ABI = [
+  "function initialize(address _borrower, address _lender, uint256 _amount, uint256 _interestRate, uint256 _durationMonths) external",
+  "function getBorrower() external view returns (address)",
+  "function getLender() external view returns (address)",
+  "function getAmount() external view returns (uint256)",
+  "function getInterestRate() external view returns (uint256)",
+  "function getDuration() external view returns (uint256)",
+  "function getStatus() external view returns (uint8)",
+  "function makePayment() external payable",
+  "function cancelLoan() external",
+  "function completeLoan() external"
+];
 
 const Web3Context = createContext<Web3ContextType | undefined>(undefined);
 
@@ -43,12 +65,73 @@ export const useWeb3 = () => {
 export const Web3Provider = React.memo(({ children }: { children: ReactNode }) => {
   console.log('Web3Provider initializing...');
   
-  const [provider, setProvider] = useState<any | null>(null);
+  const { toast } = useToast();
+  const [provider, setProvider] = useState<BrowserProvider | JsonRpcProvider | null>(null);
+  const [signer, setSigner] = useState<JsonRpcSigner | null>(null);
   const [account, setAccount] = useState<string | null>(null);
   const [balance, setBalance] = useState<string>('0');
+  const [chainId, setChainId] = useState<string | null>(null);
+  const [networkName, setNetworkName] = useState<string>('Unknown Network');
   const [loading, setLoading] = useState(false);
 
+  // Create Infura provider
+  const infuraProvider = useMemo(() => new JsonRpcProvider(INFURA_ENDPOINT), []);
+
   const isConnected = useMemo(() => Boolean(provider && account), [provider, account]);
+
+  // Handle account changes
+  const handleAccountsChanged = useCallback(async (accounts: string[]) => {
+    if (accounts.length === 0) {
+      // User disconnected their wallet
+      disconnectWallet();
+    } else if (accounts[0] !== account) {
+      setAccount(accounts[0]);
+      if (provider instanceof BrowserProvider) {
+        const balance = await provider.getBalance(accounts[0]);
+        setBalance(formatEther(balance));
+      }
+    }
+  }, [account, provider]);
+
+  // Handle chain changes
+  const handleChainChanged = useCallback((chainIdHex: string) => {
+    window.location.reload();
+  }, []);
+
+  // Effect to setup listeners for wallet events
+  useEffect(() => {
+    if (window.ethereum) {
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+      window.ethereum.on('chainChanged', handleChainChanged);
+      
+      // Check if already connected
+      if (localStorage.getItem('walletConnected') === 'true') {
+        connectWallet().catch(console.error);
+      }
+    }
+    
+    return () => {
+      if (window.ethereum) {
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
+      }
+    };
+  }, [handleAccountsChanged, handleChainChanged]);
+
+  // Initialize provider with Infura on component mount
+  useEffect(() => {
+    try {
+      console.log('Initializing Infura provider...');
+      setNetworkName('Ethereum Mainnet');
+      
+      // Check if we have a connected account from a previous session
+      if (localStorage.getItem('walletConnected') === 'true' && window.ethereum) {
+        connectWallet().catch(console.error);
+      }
+    } catch (error) {
+      console.error('Failed to initialize Infura provider:', error);
+    }
+  }, []);
 
   const connectWallet = useCallback(async () => {
     try {
@@ -59,38 +142,112 @@ export const Web3Provider = React.memo(({ children }: { children: ReactNode }) =
         throw new Error('MetaMask is not installed');
       }
 
-      // Temporarily disable ethers usage
-      console.log('Wallet connection temporarily disabled for CSP testing');
+      // Request account access
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       
+      // Create ethers provider
+      const browserProvider = new BrowserProvider(window.ethereum);
+      const network = await browserProvider.getNetwork();
+      const ethersSigner = await browserProvider.getSigner();
+      
+      // Set connected account
+      const connectedAccount = accounts[0];
+      const accountBalance = await browserProvider.getBalance(connectedAccount);
+      
+      setProvider(browserProvider);
+      setSigner(ethersSigner);
+      setAccount(connectedAccount);
+      setBalance(formatEther(accountBalance));
+      setChainId(network.chainId.toString());
+      setNetworkName(network.name);
+
+      // Save connection state
+      localStorage.setItem('walletConnected', 'true');
+      
+      toast({
+        title: "Wallet Connected",
+        description: `Connected to ${network.name}`,
+      });
+      
+      return connectedAccount;
     } catch (error: any) {
       console.error('Error connecting wallet:', error);
+      toast({
+        title: "Connection Failed",
+        description: error.message || 'Failed to connect wallet',
+        variant: "destructive",
+      });
       throw new Error(error.message || 'Failed to connect wallet');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   const disconnectWallet = useCallback(() => {
     setProvider(null);
+    setSigner(null);
     setAccount(null);
     setBalance('0');
-  }, []);
+    setChainId(null);
+    setNetworkName('Unknown Network');
+    localStorage.removeItem('walletConnected');
+    
+    toast({
+      title: "Wallet Disconnected",
+      description: "Your wallet has been disconnected",
+    });
+  }, [toast]);
 
   const createLoanContract = useCallback(async (loanDetails: LoanContractParams): Promise<string> => {
-    console.log('Create loan contract temporarily disabled for CSP testing');
-    return 'test-hash';
-  }, []);
+    try {
+      setLoading(true);
+      
+      if (!signer || !account) {
+        throw new Error('Wallet not connected');
+      }
+      
+      // Generate contract bytecode using the utility
+      const { contractAddress, txHash } = await generateLoanAgreementContract(
+        signer,
+        loanDetails.borrowerAddress,
+        loanDetails.amount,
+        loanDetails.interestRate,
+        loanDetails.durationMonths
+      );
+      
+      toast({
+        title: "Loan Contract Created",
+        description: `Contract deployed at ${contractAddress.slice(0, 8)}...${contractAddress.slice(-6)}`,
+      });
+      
+      return contractAddress;
+    } catch (error: any) {
+      console.error('Error creating loan contract:', error);
+      toast({
+        title: "Contract Creation Failed",
+        description: error.message || 'Failed to create loan contract',
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, [signer, account, toast]);
 
   const contextValue = useMemo(() => ({
     provider,
+    signer,
     account,
     isConnected,
     balance,
+    chainId,
+    networkName,
     connectWallet,
     disconnectWallet,
     createLoanContract,
-    loading
-  }), [provider, account, isConnected, balance, connectWallet, disconnectWallet, createLoanContract, loading]);
+    loading,
+    infuraProvider
+  }), [provider, signer, account, isConnected, balance, chainId, networkName, connectWallet, disconnectWallet, createLoanContract, loading, infuraProvider]);
 
   return (
     <Web3Context.Provider value={contextValue}>

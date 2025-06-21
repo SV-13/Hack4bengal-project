@@ -1,11 +1,13 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { PaymentMethod as PaymentMethodType } from '@/utils/paymentProcessing';
 import { 
   Smartphone, 
   Building2, 
@@ -13,11 +15,13 @@ import {
   Bitcoin, 
   Banknote,
   Shield,
-  Zap
+  AlertCircle,
+  Check,
+  Loader2
 } from "lucide-react";
 
-interface PaymentMethod {
-  id: string;
+interface PaymentMethodInfo {
+  id: PaymentMethodType;
   name: string;
   icon: React.ReactNode;
   description: string;
@@ -25,7 +29,7 @@ interface PaymentMethod {
   fees: string;
 }
 
-const paymentMethods: PaymentMethod[] = [
+const paymentMethods: PaymentMethodInfo[] = [
   {
     id: 'upi',
     name: 'UPI',
@@ -68,12 +72,27 @@ const paymentMethods: PaymentMethod[] = [
   }
 ];
 
+interface PaymentDetails {
+  upiId?: string;
+  accountNumber?: string;
+  ifsc?: string;
+  walletId?: string;
+  walletAddress?: string;
+  walletNetwork?: string;
+  cashNote?: string;
+  isValid?: boolean;
+}
+
 interface PaymentMethodSelectorProps {
-  selectedMethod: string;
-  onMethodChange: (method: string) => void;
-  onPaymentDetails: (details: any) => void;
+  selectedMethod: PaymentMethodType;
+  onMethodChange: (method: PaymentMethodType) => void;
+  onPaymentDetails: (details: PaymentDetails) => void;
   smartContract?: boolean;
   onSmartContractChange?: (enabled: boolean) => void;
+  showSmartContractOption?: boolean;
+  processing?: boolean;
+  error?: string | null;
+  success?: boolean;
 }
 
 export const PaymentMethodSelector = ({ 
@@ -81,22 +100,88 @@ export const PaymentMethodSelector = ({
   onMethodChange, 
   onPaymentDetails,
   smartContract = false,
-  onSmartContractChange
+  onSmartContractChange,
+  showSmartContractOption = false,
+  processing = false,
+  error = null,
+  success = false
 }: PaymentMethodSelectorProps) => {
-  const [paymentDetails, setPaymentDetails] = useState<any>({});
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails>({});
+  const [isValid, setIsValid] = useState<boolean>(false);
 
-  const handleMethodChange = (value: string) => {
-    onMethodChange(value);
-    setPaymentDetails({});
+  // Validation functions
+  const validateUPI = (upiId: string): boolean => {
+    const upiRegex = /^[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}$/;
+    return upiRegex.test(upiId);
   };
 
+  const validateAccountNumber = (accountNumber: string): boolean => {
+    return /^\d{9,18}$/.test(accountNumber);
+  };
+
+  const validateIFSC = (ifsc: string): boolean => {
+    const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+    return ifscRegex.test(ifsc.toUpperCase());
+  };
+
+  const validateWalletAddress = (address: string): boolean => {
+    // Basic Ethereum address validation
+    return /^0x[a-fA-F0-9]{40}$/.test(address);
+  };
+
+  const validatePhone = (phone: string): boolean => {
+    return /^[6-9]\d{9}$/.test(phone);
+  };
+
+  // Validate payment details when they change
+  useEffect(() => {
+    let valid = false;
+    
+    switch (selectedMethod) {
+      case 'upi':
+        valid = Boolean(paymentDetails.upiId && paymentDetails.upiId.includes('@'));
+        break;
+      case 'bank':
+        valid = Boolean(
+          paymentDetails.accountNumber && 
+          paymentDetails.accountNumber.length >= 8 &&
+          paymentDetails.ifsc && 
+          paymentDetails.ifsc.length >= 8
+        );
+        break;
+      case 'wallet':
+        valid = Boolean(paymentDetails.walletId);
+        break;
+      case 'crypto':
+        valid = Boolean(
+          paymentDetails.walletAddress && 
+          paymentDetails.walletAddress.length >= 30 && 
+          paymentDetails.walletNetwork
+        );
+        break;
+      case 'cash':
+        valid = true; // Cash is always valid
+        break;
+      default:
+        valid = false;
+    }
+
+    setIsValid(valid);
+    onPaymentDetails({...paymentDetails, isValid: valid});
+  }, [paymentDetails, selectedMethod]);
+
+  const handleMethodChange = (value: string) => {
+    onMethodChange(value as PaymentMethodType);
+    setPaymentDetails({});
+    setIsValid(false);
+  };
   const renderPaymentDetails = () => {
     switch (selectedMethod) {
       case 'upi':
         return (
           <div className="space-y-4">
             <div>
-              <Label htmlFor="upi-id">UPI ID</Label>
+              <Label htmlFor="upi-id">UPI ID *</Label>
               <Input
                 id="upi-id"
                 placeholder="yourname@paytm"
@@ -104,10 +189,27 @@ export const PaymentMethodSelector = ({
                 onChange={(e) => {
                   const details = { ...paymentDetails, upiId: e.target.value };
                   setPaymentDetails(details);
-                  onPaymentDetails(details);
                 }}
+                disabled={processing}
+                className={paymentDetails.upiId && !validateUPI(paymentDetails.upiId) ? 'border-red-500' : ''}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter your UPI ID in the format username@provider (e.g., name@paytm, name@gpay)
+              </p>
+              {paymentDetails.upiId && !validateUPI(paymentDetails.upiId) && (
+                <p className="text-xs text-red-500 mt-1">
+                  Please enter a valid UPI ID
+                </p>
+              )}
             </div>
+            {paymentDetails.upiId && validateUPI(paymentDetails.upiId) && (
+              <Alert>
+                <CheckCircle className="h-4 w-4" />
+                <AlertDescription>
+                  UPI payment method configured successfully
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
         );
       
@@ -115,29 +217,36 @@ export const PaymentMethodSelector = ({
         return (
           <div className="space-y-4">
             <div>
-              <Label htmlFor="account-number">Account Number</Label>
+              <Label htmlFor="account-number">Account Number *</Label>
               <Input
                 id="account-number"
-                placeholder="1234567890"
+                placeholder="1234567890123456"
                 value={paymentDetails.accountNumber || ''}
                 onChange={(e) => {
                   const details = { ...paymentDetails, accountNumber: e.target.value };
                   setPaymentDetails(details);
-                  onPaymentDetails(details);
                 }}
+                disabled={processing}
+                maxLength={18}
+                className={paymentDetails.accountNumber && !validateAccountNumber(paymentDetails.accountNumber) ? 'border-red-500' : ''}
               />
+              {paymentDetails.accountNumber && !validateAccountNumber(paymentDetails.accountNumber) && (
+                <p className="text-xs text-red-500 mt-1">
+                  Account number should be 9-18 digits
+                </p>
+              )}
             </div>
             <div>
-              <Label htmlFor="ifsc">IFSC Code</Label>
+              <Label htmlFor="ifsc">IFSC Code *</Label>
               <Input
                 id="ifsc"
                 placeholder="SBIN0001234"
                 value={paymentDetails.ifsc || ''}
                 onChange={(e) => {
-                  const details = { ...paymentDetails, ifsc: e.target.value };
+                  const details = { ...paymentDetails, ifsc: e.target.value.toUpperCase() };
                   setPaymentDetails(details);
-                  onPaymentDetails(details);
                 }}
+                disabled={processing}
               />
             </div>
           </div>
@@ -155,8 +264,8 @@ export const PaymentMethodSelector = ({
                 onChange={(e) => {
                   const details = { ...paymentDetails, walletId: e.target.value };
                   setPaymentDetails(details);
-                  onPaymentDetails(details);
                 }}
+                disabled={processing}
               />
             </div>
           </div>
@@ -174,19 +283,52 @@ export const PaymentMethodSelector = ({
                 onChange={(e) => {
                   const details = { ...paymentDetails, walletAddress: e.target.value };
                   setPaymentDetails(details);
-                  onPaymentDetails(details);
                 }}
+                disabled={processing}
               />
+            </div>
+            <div>
+              <Label htmlFor="wallet-network">Network</Label>
+              <select
+                id="wallet-network"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                value={paymentDetails.walletNetwork || ''}
+                onChange={(e) => {
+                  const details = { ...paymentDetails, walletNetwork: e.target.value };
+                  setPaymentDetails(details);
+                }}
+                disabled={processing}
+              >
+                <option value="">Select Network</option>
+                <option value="ethereum">Ethereum</option>
+                <option value="polygon">Polygon</option>
+                <option value="bsc">Binance Smart Chain</option>
+              </select>
             </div>
           </div>
         );
       
       case 'cash':
         return (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-sm text-yellow-800">
-              Cash transactions will be handled in person. Please coordinate the meeting location and time with the borrower.
-            </p>
+          <div className="space-y-4">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-sm text-yellow-800">
+                Cash transactions will be handled in person. Please coordinate the meeting location and time with the other party.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="cash-note">Note (Optional)</Label>
+              <Input
+                id="cash-note"
+                placeholder="Any note about the cash transaction"
+                value={paymentDetails.cashNote || ''}
+                onChange={(e) => {
+                  const details = { ...paymentDetails, cashNote: e.target.value };
+                  setPaymentDetails(details);
+                }}
+                disabled={processing}
+              />
+            </div>
           </div>
         );
       
@@ -208,11 +350,11 @@ export const PaymentMethodSelector = ({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <RadioGroup value={selectedMethod} onValueChange={handleMethodChange}>
+          <RadioGroup value={selectedMethod} onValueChange={handleMethodChange} className="mb-6">
             <div className="space-y-3">
               {paymentMethods.map((method) => (
                 <div key={method.id} className="flex items-start space-x-3">
-                  <RadioGroupItem value={method.id} id={method.id} className="mt-1" />
+                  <RadioGroupItem value={method.id} id={method.id} className="mt-1" disabled={processing} />
                   <div className="flex-1">
                     <Label htmlFor={method.id} className="flex items-center cursor-pointer">
                       {method.icon}
@@ -232,6 +374,26 @@ export const PaymentMethodSelector = ({
               ))}
             </div>
           </RadioGroup>
+          
+          {showSmartContractOption && selectedMethod === 'crypto' && (
+            <div className="flex items-center justify-between pt-4 border-t">
+              <div>
+                <Label htmlFor="smart-contract" className="flex items-center">
+                  <Shield className="h-4 w-4 mr-2" />
+                  Use Smart Contract
+                </Label>
+                <p className="text-xs text-gray-600 mt-1">
+                  Automatically enforce loan terms using blockchain technology
+                </p>
+              </div>
+              <Switch
+                id="smart-contract"
+                checked={smartContract}
+                onCheckedChange={onSmartContractChange}
+                disabled={processing}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -245,42 +407,30 @@ export const PaymentMethodSelector = ({
           </CardHeader>
           <CardContent>
             {renderPaymentDetails()}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Smart Contract Option for Crypto */}
-      {selectedMethod === 'crypto' && onSmartContractChange && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Shield className="mr-2 h-5 w-5" />
-              Smart Contract
-              <Badge className="ml-2 bg-blue-100 text-blue-800">
-                <Zap className="h-3 w-3 mr-1" />
-                Advanced
-              </Badge>
-            </CardTitle>
-            <CardDescription>
-              Use blockchain smart contracts for automated loan management
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="smart-contract"
-                checked={smartContract}
-                onChange={(e) => onSmartContractChange(e.target.checked)}
-                className="rounded border-gray-300"
-              />
-              <Label htmlFor="smart-contract" className="text-sm">
-                Enable smart contract for automatic payment processing
-              </Label>
-            </div>
-            <p className="text-xs text-gray-600 mt-2">
-              Smart contracts automatically handle loan disbursement and repayment schedules.
-            </p>
+            
+            {/* Error Message */}
+            {error && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            
+            {/* Success Message */}
+            {success && (
+              <Alert className="mt-4 bg-green-50 border-green-200 text-green-800">
+                <Check className="h-4 w-4" />
+                <AlertDescription>Payment details saved successfully!</AlertDescription>
+              </Alert>
+            )}
+            
+            {/* Processing State */}
+            {processing && (
+              <div className="flex items-center justify-center mt-4 p-2 bg-blue-50 border border-blue-100 rounded-md">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-600" />
+                <span className="text-sm text-blue-700">Processing payment...</span>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

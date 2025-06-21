@@ -12,7 +12,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from '@/integrations/supabase/client';
 import { PaymentMethodSelector } from "./PaymentMethodSelector";
 import { InvitationFlow } from "./InvitationFlow";
+import InvitationSuccess from "./InvitationSuccess";
 import { formatCurrency, parseCurrency } from "@/utils/currency";
+import { PaymentMethod } from "@/utils/paymentProcessing";
 import { 
   DollarSign, 
   Users, 
@@ -40,12 +42,25 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
   const [interestRate, setInterestRate] = useState('5.0');
   const [purpose, setPurpose] = useState('');
   const [conditions, setConditions] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('upi');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi');
   const [paymentDetails, setPaymentDetails] = useState<any>({});
   const [smartContract, setSmartContract] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showInvitation, setShowInvitation] = useState(false);
   const [createdAgreementId, setCreatedAgreementId] = useState<string>('');
+
+  const resetForm = () => {
+    setBorrowerEmail('');
+    setBorrowerName('');
+    setAmount('');
+    setDuration('12');
+    setInterestRate('5.0');
+    setPurpose('');
+    setConditions('');
+    setPaymentDetails({});
+    setPaymentMethod('upi');
+    setSmartContract(false);
+  };
 
   const calculateTotalReturn = () => {
     const principal = parseCurrency(amount) || 0;
@@ -57,9 +72,7 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
       return principal + interest;
     }
     return principal;
-  };
-
-  const handleCreateLoan = async () => {
+  };  const handleCreateLoan = async () => {
     if (!user) {
       toast({
         title: "Authentication Required",
@@ -78,11 +91,52 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
       return;
     }
 
+    // Enhanced payment method validation
+    if (!paymentDetails.isValid) {
+      let errorMessage = "Please provide valid payment details for your selected method.";
+      
+      switch (paymentMethod) {
+        case 'upi':
+          errorMessage = "Please provide a valid UPI ID (e.g., username@paytm)";
+          break;
+        case 'bank':
+          errorMessage = "Please provide valid account number and IFSC code";
+          break;
+        case 'wallet':
+          errorMessage = "Please provide a valid wallet ID or phone number";
+          break;
+        case 'crypto':
+          errorMessage = "Please provide a valid cryptocurrency wallet address";
+          break;
+        case 'cash':
+          errorMessage = "Please provide cash transaction details or meeting location";
+          break;
+      }
+      
+      toast({
+        title: "Payment Details Required",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate amount range
+    const loanAmount = parseCurrency(amount);
+    if (loanAmount < 100 || loanAmount > 1000000) {
+      toast({
+        title: "Invalid Amount",
+        description: "Loan amount must be between ₹100 and ₹10,00,000",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // Create loan agreement
-      const { data: agreement, error } = await supabase
+      // Create loan proposal (not agreement yet - needs borrower acceptance)
+      const { data: proposal, error } = await supabase
         .from('loan_agreements')
         .insert({
           lender_id: user.id,
@@ -94,43 +148,51 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
           purpose,
           conditions,
           payment_method: paymentMethod,
+          payment_details: paymentDetails,
           smart_contract: smartContract,
-          status: 'pending'
+          status: 'proposed', // Changed from 'pending' to 'proposed'
+          lender_signature: new Date().toISOString(), // Lender signs when creating
+          borrower_signature: null, // Waiting for borrower signature
+          contract_address: null, // No contract until both parties sign
+          pdf_generated: false // No PDF until both parties sign
         })
-        .select()
-        .single();
+        .select()        .single();
 
       if (error) throw error;
 
-      setCreatedAgreementId(agreement.id);
+      // Send notification to borrower via email/SMS
+      await supabase.from('notifications').insert({
+        user_id: null, // For non-registered users
+        email: borrowerEmail,
+        type: 'loan_proposal',
+        title: 'New Loan Offer',
+        message: `${user.name} has offered you a loan of ${formatCurrency(parseCurrency(amount))} at ${interestRate}% interest for ${duration} months.`,
+        agreement_id: proposal.id,
+        read: false
+      });
+
+      setCreatedAgreementId(proposal.id);
 
       if (borrowerType === 'new') {
         // Show invitation flow for new users
         setShowInvitation(true);
       } else {
-        // For existing users, we would send a notification
+        // For existing users, send notification
         toast({
-          title: "Loan Agreement Created!",
-          description: `Loan offer sent to ${borrowerName} for ${formatCurrency(parseCurrency(amount))}`,
+          title: "Loan Proposal Sent! 📩",
+          description: `Loan offer sent to ${borrowerName}. They need to accept and sign the agreement before it becomes active.`,
         });
+        
+        // Reset form and close modal
+        resetForm();
         onOpenChange(false);
       }
 
-      // Reset form
-      setBorrowerEmail('');
-      setBorrowerName('');
-      setAmount('');
-      setDuration('12');
-      setInterestRate('5.0');
-      setPurpose('');
-      setConditions('');
-      setPaymentDetails({});
-
     } catch (error) {
-      console.error('Error creating loan agreement:', error);
+      console.error('Error creating loan proposal:', error);
       toast({
         title: "Error",
-        description: "Failed to create loan agreement. Please try again.",
+        description: "Failed to create loan proposal. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -373,21 +435,28 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
             </div>
           </div>
         </DialogContent>
+      </Dialog>      {/* Success Modal for showing invitation details */}
+      <Dialog open={showInvitation} onOpenChange={setShowInvitation}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Loan Proposal Sent Successfully!</DialogTitle>
+          </DialogHeader>
+          <InvitationSuccess
+            agreementId={createdAgreementId}
+            borrowerName={borrowerName}
+            borrowerEmail={borrowerEmail}
+            amount={parseCurrency(amount) || 0}
+            interestRate={parseFloat(interestRate) || 0}
+            duration={parseInt(duration) || 0}
+            paymentMethod={paymentMethod}
+            onClose={() => {
+              setShowInvitation(false);
+              resetForm();
+              onOpenChange(false);
+            }}
+          />
+        </DialogContent>
       </Dialog>
-
-      {/* Invitation Flow Modal */}
-      <InvitationFlow
-        open={showInvitation}
-        onOpenChange={(open) => {
-          setShowInvitation(open);
-          if (!open) {
-            onOpenChange(false); // Close parent modal too
-          }
-        }}
-        agreementId={createdAgreementId}
-        borrowerEmail={borrowerEmail}
-        borrowerName={borrowerName}
-      />
     </>
   );
 };
