@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -159,13 +160,19 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
       return;
     }
 
-    setLoading(true);    try {
-      console.log('Creating loan offer with data:', {
+    setLoading(true);    try {      console.log('Creating loan offer with data:', {
         lender_id: user.id,
+        lender_name: user.name || user.email || 'Unknown Lender',
+        lender_email: user.email || '',
         borrower_email: borrowerEmail,
+        borrower_name: borrowerName,
         amount: parseCurrency(amount),
         interest_rate: parseFloat(interestRate),
-        duration_months: parseInt(duration)
+        duration_months: parseInt(duration),
+        purpose,
+        conditions,
+        payment_method: paymentMethod,
+        status: 'pending'
       });
 
       // Create loan offer (lender offering to borrower)
@@ -181,11 +188,11 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
           amount: parseCurrency(amount),
           interest_rate: parseFloat(interestRate),
           duration_months: parseInt(duration),
-          purpose,
-          conditions,
+          purpose: purpose || 'other', // Ensure purpose is not empty
+          conditions: conditions || '', // Ensure conditions is not null
           payment_method: paymentMethod,
           smart_contract: smartContract,
-          status: 'pending', // Use 'pending' status (available in schema)
+          status: 'pending',
           data: {
             paymentDetails: paymentDetails,
             lenderSignedAt: new Date().toISOString(),
@@ -399,15 +406,23 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
                     />
                   </div>
                 </div>
-                
-                <div>
+                  <div>
                   <Label htmlFor="purpose">Purpose of Loan</Label>
-                  <Input
-                    id="purpose"
-                    value={purpose}
-                    onChange={(e) => setPurpose(e.target.value)}
-                    placeholder="Business expansion, emergency, etc."
-                  />
+                  <Select value={purpose} onValueChange={setPurpose}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select loan purpose" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="business">Business</SelectItem>
+                      <SelectItem value="education">Education</SelectItem>
+                      <SelectItem value="medical">Medical</SelectItem>
+                      <SelectItem value="home_improvement">Home Improvement</SelectItem>
+                      <SelectItem value="debt_consolidation">Debt Consolidation</SelectItem>
+                      <SelectItem value="wedding">Wedding</SelectItem>
+                      <SelectItem value="travel">Travel</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 
                 <div>

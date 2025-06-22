@@ -17,10 +17,6 @@ import AgreementList from "@/components/AgreementList";
 import TransactionHistory from "@/components/TransactionHistory";
 import NotificationSystem from "@/components/NotificationSystem";
 import Preloader from "@/components/Preloader";
-import { testDatabaseConnection, testLoanRequestCreation } from "@/utils/testDatabase";
-import { diagnoseDatabaseIssues, quickConnectionTest } from "@/utils/diagnostics";
-import { emergencyConnectionTest } from "@/utils/emergencyTest";
-
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from "@/utils/currency";
@@ -164,85 +160,7 @@ const Dashboard = () => {  const { user, logout } = useAuth();
         description: "Failed to log out. Please try again.",
         variant: "destructive",
       });
-    }
-  };  // Add temporary test functions
-  const testDatabase = async () => {
-    const result = await testDatabaseConnection();
-    console.log('Database test result:', result);
-    toast({
-      title: "Database Test",
-      description: result.connected ? "Database connected successfully" : "Database connection failed",
-      variant: result.connected ? "default" : "destructive"
-    });
-  };
-
-  const runDiagnostics = async () => {
-    toast({
-      title: "🔍 Running Diagnostics...",
-      description: "Check browser console for detailed results",
-    });
-    
-    const result = await diagnoseDatabaseIssues();
-    const isHealthy = result.connection && result.table_access;
-    
-    toast({
-      title: isHealthy ? "✅ System Healthy" : "❌ Issues Found",
-      description: isHealthy 
-        ? "All systems operational" 
-        : `${result.errors.length} issue(s) detected. Check console for details.`,
-      variant: isHealthy ? "default" : "destructive"
-    });
-  };
-
-  const emergencyTest = async () => {
-    toast({
-      title: "🚨 Emergency Test Running...",
-      description: "Check console for detailed diagnosis",
-    });
-    
-    const result = await emergencyConnectionTest();
-    
-    if (result.issue === null) {
-      toast({
-        title: "✅ Emergency Test: PASSED",
-        description: "Database connection is working!",
-      });
-    } else {
-      toast({
-        title: "🚨 Emergency Test: ISSUES FOUND",
-        description: result.solution || `Issue: ${result.issue}`,
-        variant: "destructive"
-      });
-    }
-  };
-
-  const quickTest = async () => {
-    const result = await quickConnectionTest();
-    toast({
-      title: result.success ? "✅ Quick Test Passed" : "❌ Quick Test Failed", 
-      description: result.success ? "Basic connectivity working" : result.error,
-      variant: result.success ? "default" : "destructive"
-    });
-  };
-
-  const testLoanCreation = async () => {
-    if (!user) {
-      toast({
-        title: "Authentication Required",
-        description: "Please log in to test loan creation",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const result = await testLoanRequestCreation(user.id, user.email || '', user.name || '');
-    console.log('Loan creation test result:', result);
-    toast({
-      title: result.success ? "✅ Loan Creation Test" : "❌ Loan Creation Test",
-      description: result.message,
-      variant: result.success ? "default" : "destructive"
-    });
-  };
+    }  };
 
   if (loading) {
     return (
@@ -334,23 +252,7 @@ const Dashboard = () => {  const { user, logout } = useAuth();
               className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
             >
               <DollarSign className="mr-2 h-4 w-4" />
-              Request Loan
-            </Button>            {/* Test Buttons - Remove these in production */}
-            <Button onClick={emergencyTest} variant="destructive" size="sm">
-              🚨 Emergency Test
-            </Button>
-            <Button onClick={quickTest} variant="outline" size="sm">
-              ⚡ Quick Test
-            </Button>
-            <Button onClick={runDiagnostics} variant="outline" size="sm">
-              🔍 Full Diagnostics
-            </Button>
-            <Button onClick={testDatabase} variant="outline" size="sm">
-              🔧 Test Database
-            </Button>
-            <Button onClick={testLoanCreation} variant="outline" size="sm">
-              📝 Test Loan Creation
-            </Button>
+              Request Loan            </Button>
             
             {/* Wallet Connection Button */}
             {!isConnected ? (
