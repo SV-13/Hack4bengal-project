@@ -1,4 +1,3 @@
-
 import jsPDF from 'jspdf';
 import { formatCurrency } from './currency';
 import { Contract, JsonRpcSigner, parseEther, ContractFactory, Interface } from 'ethers';
