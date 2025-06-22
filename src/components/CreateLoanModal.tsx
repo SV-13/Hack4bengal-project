@@ -10,11 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from '@/integrations/supabase/client';
-import { PaymentMethodSelector } from "./PaymentMethodSelector";
+import { PaymentMethodInput, PaymentMethodType } from "./PaymentMethodInput";
 import { InvitationFlow } from "./InvitationFlow";
 import InvitationSuccess from "./InvitationSuccess";
 import { formatCurrency, parseCurrency } from "@/utils/currency";
-import { PaymentMethod } from "@/utils/paymentProcessing";
 import { 
   DollarSign, 
   Users, 
@@ -42,7 +41,7 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
   const [interestRate, setInterestRate] = useState('5.0');
   const [purpose, setPurpose] = useState('');
   const [conditions, setConditions] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('upi');
   const [paymentDetails, setPaymentDetails] = useState<any>({});
   const [smartContract, setSmartContract] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -395,10 +394,8 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
                   </Card>
                 )}
               </CardContent>
-            </Card>
-
-            {/* Payment Method */}
-            <PaymentMethodSelector
+            </Card>            {/* Payment Method */}
+            <PaymentMethodInput
               selectedMethod={paymentMethod}
               onMethodChange={setPaymentMethod}
               onPaymentDetails={setPaymentDetails}

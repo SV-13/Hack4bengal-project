@@ -1,27 +1,59 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+/**
+ * Enhanced Payment Method Selector with Real API Integration
+ * Shows actual payment method capabilities and handles real payments
+ */
+
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { PaymentMethod as PaymentMethodType } from '@/utils/paymentProcessing';
+import { useToast } from "@/hooks/use-toast";
 import { 
+  PaymentMethod, 
+  PaymentDetails, 
+  PaymentResult,
+  processPayment,
+  getPaymentMethodCapabilities 
+} from "@/utils/paymentProcessing";
+import { formatCurrency } from "@/utils/currency";
+import { getCryptoPrices } from "@/utils/cryptoProcessor";
+import { 
+  CreditCard, 
   Smartphone, 
   Building2, 
   Wallet, 
   Bitcoin, 
-  Banknote,
-  Shield,
+  DollarSign,
+  Clock,
+  CheckCircle,
   AlertCircle,
-  Check,
-  Loader2
+  QrCode,
+  Copy,
+  Banknote,
+  Shield
 } from "lucide-react";
+import { PAYMENT_TEST_DATA } from '@/config/paymentConfig';
+import { Switch } from "@/components/ui/switch";
+import { Loader2, Wand2 } from "lucide-react";
+import type { LucideIcon } from 'lucide-react';
+
+// Extended PaymentDetails interface to include UI-specific fields
+interface ExtendedPaymentDetails extends PaymentDetails {
+  upiId?: string;
+  accountNumber?: string;
+  ifsc?: string;
+  walletId?: string;
+  walletNetwork?: string;
+  cashNote?: string;
+  isValid?: boolean;
+}
 
 interface PaymentMethodInfo {
-  id: PaymentMethodType;
+  id: PaymentMethod;
   name: string;
   icon: React.ReactNode;
   description: string;
@@ -72,21 +104,17 @@ const paymentMethods: PaymentMethodInfo[] = [
   }
 ];
 
-interface PaymentDetails {
-  upiId?: string;
-  accountNumber?: string;
-  ifsc?: string;
-  walletId?: string;
-  walletAddress?: string;
-  walletNetwork?: string;
-  cashNote?: string;
-  isValid?: boolean;
-}
-
 interface PaymentMethodSelectorProps {
-  selectedMethod: PaymentMethodType;
-  onMethodChange: (method: PaymentMethodType) => void;
-  onPaymentDetails: (details: PaymentDetails) => void;
+  amount: number;
+  agreementId: string;
+  payerId: string;
+  recipientId: string;
+  transactionType: 'disbursement' | 'repayment' | 'interest';
+  onSuccess: (result: PaymentResult) => void;
+  onError: (error: string) => void;
+  selectedMethod: PaymentMethod;
+  onMethodChange: (method: PaymentMethod) => void;
+  onPaymentDetails: (details: ExtendedPaymentDetails) => void;
   smartContract?: boolean;
   onSmartContractChange?: (enabled: boolean) => void;
   showSmartContractOption?: boolean;
@@ -95,9 +123,24 @@ interface PaymentMethodSelectorProps {
   success?: boolean;
 }
 
-export const PaymentMethodSelector = ({ 
-  selectedMethod, 
-  onMethodChange, 
+const paymentIcons: Record<PaymentMethod, LucideIcon> = {
+  upi: Smartphone,
+  bank: Building2,
+  wallet: Wallet,
+  crypto: Bitcoin,
+  cash: DollarSign,
+};
+
+export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
+  amount,
+  agreementId,
+  payerId,
+  recipientId,
+  transactionType,
+  onSuccess,
+  onError,
+  selectedMethod,
+  onMethodChange,
   onPaymentDetails,
   smartContract = false,
   onSmartContractChange,
@@ -105,9 +148,225 @@ export const PaymentMethodSelector = ({
   processing = false,
   error = null,
   success = false
-}: PaymentMethodSelectorProps) => {
-  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails>({});
+}) => {
+  const { toast } = useToast();
+  const [selectedCrypto, setSelectedCrypto] = useState<'ETH' | 'USDT'>('ETH');
+  const [walletAddress, setWalletAddress] = useState('');
+  const [cryptoPrices, setCryptoPrices] = useState<{ [key: string]: number }>({});
+  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
+  const [paymentDetails, setPaymentDetails] = useState<ExtendedPaymentDetails>({
+    amount,
+    agreementId,
+    payerId,
+    recipientId,
+    transactionType
+  });
   const [isValid, setIsValid] = useState<boolean>(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
+
+  const capabilities = getPaymentMethodCapabilities();
+
+  useEffect(() => {
+    // Initialize payment details with props
+    setPaymentDetails({
+      amount,
+      agreementId,
+      payerId,
+      recipientId,
+      transactionType,
+      paymentMethod: selectedMethod
+    });
+    
+    // Load crypto prices
+    getCryptoPrices().then(setCryptoPrices).catch(console.error);
+  }, [amount, agreementId, payerId, recipientId, transactionType, selectedMethod]);
+
+  const handlePayment = async () => {
+    if (selectedMethod === 'crypto' && !paymentDetails.walletAddress) {
+      onError('Please enter wallet address for crypto payments');
+      return;
+    }
+
+    if (amount > capabilities[selectedMethod].maxAmount) {
+      onError(`Amount exceeds maximum limit for ${capabilities[selectedMethod].name}`);
+      return;
+    }
+
+    setIsProcessingPayment(true);
+    setPaymentResult(null);
+
+    try {
+      const processedPaymentDetails: PaymentDetails = {
+        amount,
+        agreementId,
+        paymentMethod: selectedMethod,
+        payerId,
+        recipientId,
+        transactionType,
+        walletAddress: paymentDetails.walletAddress,
+        metadata: {
+          cryptocurrency: selectedMethod === 'crypto' ? selectedCrypto : undefined,
+          useRazorpay: selectedMethod === 'upi' || selectedMethod === 'wallet',
+        }
+      };
+
+      if (selectedMethod === 'upi' && paymentDetails.upiId) {
+        processedPaymentDetails.metadata.upiId = paymentDetails.upiId;
+      }
+      if (selectedMethod === 'bank') {
+        if (paymentDetails.accountNumber) processedPaymentDetails.metadata.accountNumber = paymentDetails.accountNumber;
+        if (paymentDetails.ifsc) processedPaymentDetails.metadata.ifsc = paymentDetails.ifsc;
+      }
+      if (selectedMethod === 'wallet' && paymentDetails.walletId) {
+        processedPaymentDetails.metadata.walletId = paymentDetails.walletId;
+      }
+      if (selectedMethod === 'crypto') {
+        if (paymentDetails.walletAddress) processedPaymentDetails.metadata.walletAddress = paymentDetails.walletAddress;
+        if (paymentDetails.walletNetwork) processedPaymentDetails.metadata.network = paymentDetails.walletNetwork;
+      }
+      if (selectedMethod === 'cash' && paymentDetails.cashNote) {
+        processedPaymentDetails.metadata.note = paymentDetails.cashNote;
+      }
+
+      const result = await processPayment(processedPaymentDetails);
+      setPaymentResult(result);
+
+      if (result.success) {
+        onSuccess(result);
+        toast({
+          title: "Payment Initiated",
+          description: result.message,
+        });
+      } else {
+        onError(result.message || 'Payment failed');
+        toast({
+          title: "Payment Failed",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Payment processing failed';
+      onError(errorMessage);
+      toast({
+        title: "Payment Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
+  const getCryptoAmount = (crypto: string) => {
+    const price = cryptoPrices[crypto];
+    if (!price) return 'Loading...';
+    return (amount / price).toFixed(crypto === 'BTC' ? 8 : 6);
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      title: "Copied",
+      description: "Text copied to clipboard",
+    });
+  };
+
+  const renderPaymentInstructions = () => {
+    if (!paymentResult) return null;
+
+    switch (selectedMethod) {
+      case 'upi':
+        if (paymentResult.metadata?.upiIntent) {
+          return (
+            <Alert>
+              <QrCode className="h-4 w-4" />
+              <AlertDescription>
+                <div className="space-y-2">
+                  <p>Complete payment using your UPI app:</p>
+                  <div className="bg-gray-100 p-3 rounded">
+                    <p className="text-sm font-mono">VPA: {paymentResult.metadata.vpa}</p>
+                    <p className="text-sm font-mono">Amount: ₹{amount}</p>
+                    <p className="text-sm font-mono">Ref: {paymentResult.metadata.transactionRef}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => window.open(paymentResult.metadata.upiIntent)}
+                  >
+                    Open UPI App
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          );
+        }
+        break;
+
+      case 'bank':
+        if (paymentResult.metadata?.instructions) {
+          return (
+            <Alert>
+              <Building2 className="h-4 w-4" />
+              <AlertDescription>
+                <div className="space-y-2">
+                  <p className="font-medium">Bank Transfer Instructions:</p>
+                  <div className="bg-gray-100 p-3 rounded space-y-1">
+                    {paymentResult.metadata.instructions.map((instruction: string, index: number) => (
+                      <p key={index} className="text-sm font-mono">{instruction}</p>
+                    ))}
+                  </div>
+                  <p className="text-sm text-orange-600">
+                    Estimated time: {paymentResult.metadata.estimatedTime}
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => copyToClipboard(paymentResult.metadata.reference)}
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy Reference
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          );
+        }
+        break;
+
+      case 'crypto':
+        if (paymentResult.metadata?.txHash) {
+          return (
+            <Alert>
+              <CheckCircle className="h-4 w-4" />
+              <AlertDescription>
+                <div className="space-y-2">
+                  <p className="font-medium">Crypto Payment Successful!</p>
+                  <div className="bg-gray-100 p-3 rounded">
+                    <p className="text-sm font-mono">Transaction: {paymentResult.metadata.txHash}</p>
+                    <p className="text-sm font-mono">
+                      Block: {paymentResult.metadata.blockNumber}
+                    </p>
+                    <p className="text-sm font-mono">
+                      Amount: {paymentResult.metadata.ethAmount || paymentResult.metadata.usdtAmount} {selectedCrypto}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.open(`https://etherscan.io/tx/${paymentResult.metadata.txHash}`)}
+                  >
+                    View on Etherscan
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          );
+        }
+        break;
+    }
+
+    return null;
+  };
 
   // Validation functions
   const validateUPI = (upiId: string): boolean => {
@@ -171,17 +430,75 @@ export const PaymentMethodSelector = ({
   }, [paymentDetails, selectedMethod]);
 
   const handleMethodChange = (value: string) => {
-    onMethodChange(value as PaymentMethodType);
-    setPaymentDetails({});
+    onMethodChange(value as PaymentMethod);
+    setPaymentDetails({
+      amount,
+      agreementId,
+      payerId,
+      recipientId,
+      transactionType,
+      paymentMethod: value as PaymentMethod
+    });
     setIsValid(false);
   };
+
+  // Handle autofill for payment details based on selected method
+  const handleAutofill = () => {
+    switch (selectedMethod) {
+      case 'upi':
+        setPaymentDetails({
+          ...paymentDetails,
+          upiId: PAYMENT_TEST_DATA.upi.success
+        });
+        break;
+      case 'bank':
+        setPaymentDetails({
+          ...paymentDetails,
+          accountNumber: PAYMENT_TEST_DATA.bank.accountNumber,
+          ifsc: PAYMENT_TEST_DATA.bank.ifsc
+        });
+        break;
+      case 'wallet':
+        setPaymentDetails({
+          ...paymentDetails,
+          walletId: PAYMENT_TEST_DATA.wallet.phoneNumber
+        });
+        break;
+      case 'crypto':
+        setPaymentDetails({
+          ...paymentDetails,
+          walletAddress: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+          walletNetwork: 'ETH'
+        });
+        break;
+      case 'cash':
+        setPaymentDetails({
+          ...paymentDetails,
+          cashNote: 'Will exchange cash in person at agreed location'
+        });
+        break;
+    }
+  };
+
   const renderPaymentDetails = () => {
     switch (selectedMethod) {
       case 'upi':
         return (
           <div className="space-y-4">
             <div>
-              <Label htmlFor="upi-id">UPI ID *</Label>
+              <div className="flex justify-between items-center mb-1">
+                <Label htmlFor="upi-id">UPI ID *</Label>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleAutofill} 
+                  className="h-7 text-xs flex items-center gap-1"
+                  disabled={processing}
+                >
+                  <Wand2 className="h-3 w-3" />
+                  Autofill
+                </Button>
+              </div>
               <Input
                 id="upi-id"
                 placeholder="yourname@paytm"
@@ -216,6 +533,18 @@ export const PaymentMethodSelector = ({
       case 'bank':
         return (
           <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleAutofill} 
+                className="h-7 text-xs flex items-center gap-1 mb-2"
+                disabled={processing}
+              >
+                <Wand2 className="h-3 w-3" />
+                Autofill Test Data
+              </Button>
+            </div>
             <div>
               <Label htmlFor="account-number">Account Number *</Label>
               <Input
@@ -255,55 +584,84 @@ export const PaymentMethodSelector = ({
       case 'wallet':
         return (
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="wallet-number">Wallet Number/Email</Label>
-              <Input
-                id="wallet-number"
-                placeholder="9876543210 or email@example.com"
-                value={paymentDetails.walletId || ''}
-                onChange={(e) => {
-                  const details = { ...paymentDetails, walletId: e.target.value };
-                  setPaymentDetails(details);
-                }}
+            <div className="flex justify-between items-center mb-1">
+              <Label htmlFor="wallet-id">Mobile Number / Wallet ID *</Label>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleAutofill} 
+                className="h-7 text-xs flex items-center gap-1"
                 disabled={processing}
-              />
+              >
+                <Wand2 className="h-3 w-3" />
+                Autofill
+              </Button>
             </div>
+            <Input
+              id="wallet-id"
+              placeholder="9876543210"
+              value={paymentDetails.walletId || ''}
+              onChange={(e) => {
+                const details = { ...paymentDetails, walletId: e.target.value };
+                setPaymentDetails(details);
+              }}
+              disabled={processing}
+            />
+            <p className="text-xs text-gray-500">
+              Enter your registered mobile number for wallets like Paytm, PhonePe, etc.
+            </p>
           </div>
         );
       
       case 'crypto':
         return (
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="wallet-address">Wallet Address</Label>
-              <Input
-                id="wallet-address"
-                placeholder="0x742d35Cc6731C0532925a3b8D"
-                value={paymentDetails.walletAddress || ''}
-                onChange={(e) => {
-                  const details = { ...paymentDetails, walletAddress: e.target.value };
-                  setPaymentDetails(details);
-                }}
+            <div className="flex justify-between items-center mb-1">
+              <Label htmlFor="wallet-address">Wallet Address *</Label>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleAutofill} 
+                className="h-7 text-xs flex items-center gap-1"
                 disabled={processing}
-              />
+              >
+                <Wand2 className="h-3 w-3" />
+                Autofill
+              </Button>
             </div>
+            <Input
+              id="wallet-address"
+              placeholder="0x..."
+              value={paymentDetails.walletAddress || ''}
+              onChange={(e) => {
+                const details = { ...paymentDetails, walletAddress: e.target.value };
+                setPaymentDetails(details);
+              }}
+              disabled={processing}
+            />
             <div>
-              <Label htmlFor="wallet-network">Network</Label>
-              <select
-                id="wallet-network"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              <Label htmlFor="wallet-network">Network *</Label>
+              <RadioGroup
                 value={paymentDetails.walletNetwork || ''}
-                onChange={(e) => {
-                  const details = { ...paymentDetails, walletNetwork: e.target.value };
+                onValueChange={(value) => {
+                  const details = { ...paymentDetails, walletNetwork: value };
                   setPaymentDetails(details);
                 }}
                 disabled={processing}
               >
-                <option value="">Select Network</option>
-                <option value="ethereum">Ethereum</option>
-                <option value="polygon">Polygon</option>
-                <option value="bsc">Binance Smart Chain</option>
-              </select>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="ETH" id="eth" />
+                  <Label htmlFor="eth">Ethereum</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="BSC" id="bsc" />
+                  <Label htmlFor="bsc">Binance Smart Chain</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="MATIC" id="matic" />
+                  <Label htmlFor="matic">Polygon (MATIC)</Label>
+                </div>
+              </RadioGroup>
             </div>
           </div>
         );
@@ -311,24 +669,32 @@ export const PaymentMethodSelector = ({
       case 'cash':
         return (
           <div className="space-y-4">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <p className="text-sm text-yellow-800">
-                Cash transactions will be handled in person. Please coordinate the meeting location and time with the other party.
-              </p>
-            </div>
-            <div>
-              <Label htmlFor="cash-note">Note (Optional)</Label>
-              <Input
-                id="cash-note"
-                placeholder="Any note about the cash transaction"
-                value={paymentDetails.cashNote || ''}
-                onChange={(e) => {
-                  const details = { ...paymentDetails, cashNote: e.target.value };
-                  setPaymentDetails(details);
-                }}
+            <div className="flex justify-between items-center mb-1">
+              <Label htmlFor="cash-note">Note (optional)</Label>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleAutofill} 
+                className="h-7 text-xs flex items-center gap-1"
                 disabled={processing}
-              />
+              >
+                <Wand2 className="h-3 w-3" />
+                Autofill
+              </Button>
             </div>
+            <Input
+              id="cash-note"
+              placeholder="Add any note about the cash transfer"
+              value={paymentDetails.cashNote || ''}
+              onChange={(e) => {
+                const details = { ...paymentDetails, cashNote: e.target.value };
+                setPaymentDetails(details);
+              }}
+              disabled={processing}
+            />
+            <p className="text-xs text-gray-500">
+              Cash transactions should comply with local regulations and are at your own risk.
+            </p>
           </div>
         );
       
@@ -339,101 +705,155 @@ export const PaymentMethodSelector = ({
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Wallet className="mr-2 h-5 w-5" />
-            Payment Method
-          </CardTitle>
-          <CardDescription>
-            Choose how you'd like to send/receive money
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <RadioGroup value={selectedMethod} onValueChange={handleMethodChange} className="mb-6">
-            <div className="space-y-3">
-              {paymentMethods.map((method) => (
-                <div key={method.id} className="flex items-start space-x-3">
-                  <RadioGroupItem value={method.id} id={method.id} className="mt-1" disabled={processing} />
-                  <div className="flex-1">
-                    <Label htmlFor={method.id} className="flex items-center cursor-pointer">
-                      {method.icon}
-                      <span className="ml-2 font-medium">{method.name}</span>
-                      <div className="ml-auto flex space-x-2">
-                        <Badge variant="outline" className="text-xs">
-                          {method.processingTime}
-                        </Badge>
-                        <Badge variant="secondary" className="text-xs">
-                          {method.fees}
-                        </Badge>
-                      </div>
-                    </Label>
-                    <p className="text-sm text-gray-600 mt-1">{method.description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </RadioGroup>
-          
-          {showSmartContractOption && selectedMethod === 'crypto' && (
-            <div className="flex items-center justify-between pt-4 border-t">
-              <div>
-                <Label htmlFor="smart-contract" className="flex items-center">
-                  <Shield className="h-4 w-4 mr-2" />
-                  Use Smart Contract
-                </Label>
-                <p className="text-xs text-gray-600 mt-1">
-                  Automatically enforce loan terms using blockchain technology
-                </p>
-              </div>
-              <Switch
-                id="smart-contract"
-                checked={smartContract}
-                onCheckedChange={onSmartContractChange}
-                disabled={processing}
-              />
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {paymentMethods.map((method) => {
+          const Icon = paymentIcons[method.id as PaymentMethod];
+          const isSelected = selectedMethod === method.id;
+          const isDisabled = amount > capabilities[method.id].maxAmount;
 
+          return (
+            <Card
+              key={method.id}
+              className={`cursor-pointer transition-all ${
+                isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:shadow-md'
+              } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={() => !isDisabled && handleMethodChange(method.id as PaymentMethod)}
+            >
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center space-x-2 text-sm">
+                  <Icon className="h-5 w-5" />
+                  <span>{method.name}</span>
+                  {method.processingTime === 'Instant' && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Clock className="mr-1 h-3 w-3" />
+                      {method.processingTime}
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <p className="text-xs text-gray-600 mb-2">{method.description}</p>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span>Max Amount:</span>
+                    <span className="font-medium">
+                      {capabilities[method.id].maxAmount === Number.MAX_SAFE_INTEGER 
+                        ? 'No limit' 
+                        : formatCurrency(capabilities[method.id].maxAmount)
+                      }
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Fees:</span>
+                    <span className="font-medium">{method.fees === 'Free' ? 'Free' : method.fees}</span>
+                  </div>
+                  {method.id === 'crypto' && cryptoPrices.ETH && (
+                    <div className="space-y-1 pt-2 border-t">
+                      <div className="flex justify-between">
+                        <span>ETH:</span>
+                        <span className="font-medium">{getCryptoAmount('ETH')} ETH</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>USDT:</span>
+                        <span className="font-medium">{getCryptoAmount('USDT')} USDT</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {isDisabled && (
+                  <Badge variant="destructive" className="w-full mt-2 text-xs">
+                    Amount too high
+                  </Badge>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Smart Contract Option */}
+      {showSmartContractOption && onSmartContractChange && (
+        <div className="pt-3 border-t">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="smart-contract" className="flex items-center">
+                <Shield className="mr-2 h-4 w-4 text-blue-600" />
+                Use Smart Contract
+              </Label>
+              <p className="text-sm text-gray-500">
+                Secure your loan with a blockchain smart contract
+              </p>
+            </div>
+            <Switch
+              id="smart-contract"
+              checked={smartContract}
+              onCheckedChange={onSmartContractChange}
+              disabled={processing}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Payment Details */}
       {selectedMethod && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Payment Details</CardTitle>
+        <Card className="mt-4">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center text-lg">
+              {(() => {
+                const Icon = paymentIcons[selectedMethod];
+                return <Icon className="h-5 w-5 mr-2" />;
+              })()}
+              <span>
+                {selectedMethod} Details
+              </span>
+            </CardTitle>
             <CardDescription>
-              Enter details for {paymentMethods.find(m => m.id === selectedMethod)?.name}
+              Enter your payment details for {selectedMethod}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {renderPaymentDetails()}
-            
-            {/* Error Message */}
-            {error && (
-              <Alert variant="destructive" className="mt-4">
+            {processing ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <p className="ml-3">Processing payment...</p>
+              </div>
+            ) : error ? (
+              <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
-            )}
-            
-            {/* Success Message */}
-            {success && (
-              <Alert className="mt-4 bg-green-50 border-green-200 text-green-800">
-                <Check className="h-4 w-4" />
-                <AlertDescription>Payment details saved successfully!</AlertDescription>
+            ) : success ? (
+              <Alert className="bg-green-50 text-green-800 border-green-200">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <AlertDescription>Payment successful! Your transaction has been processed.</AlertDescription>
               </Alert>
-            )}
-            
-            {/* Processing State */}
-            {processing && (
-              <div className="flex items-center justify-center mt-4 p-2 bg-blue-50 border border-blue-100 rounded-md">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-600" />
-                <span className="text-sm text-blue-700">Processing payment...</span>
-              </div>
+            ) : (
+              renderPaymentDetails()
             )}
           </CardContent>
         </Card>
       )}
+
+      {/* Payment summary and action */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <p className="text-lg font-semibold">Amount: {formatCurrency(amount)}</p>
+              <p className="text-sm text-gray-600">via {capabilities[selectedMethod].name}</p>
+            </div>
+            <Button
+              onClick={handlePayment}
+              disabled={processing || isProcessingPayment || !isValid}
+              className="min-w-[120px]"
+            >
+              {processing || isProcessingPayment ? 'Processing...' : 'Pay Now'}
+            </Button>
+          </div>
+
+          {paymentResult && renderPaymentInstructions()}
+        </CardContent>
+      </Card>
     </div>
   );
 };

@@ -9,6 +9,9 @@ import { useToast } from "@/components/ui/use-toast";
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from "@/utils/currency";
 import { downloadContract, ContractData } from "@/utils/contractGenerator";
+import { claimRequest } from "@/utils/supabaseRPC";
+import { notifyLoanRequestClaimed } from "@/utils/emailNotifications";
+import { useAuth } from "@/hooks/useAuth";
 import { 
   CheckCircle, 
   X, 
@@ -39,6 +42,7 @@ export const LoanAcceptanceModal = ({
   onAccepted,
   onRejected 
 }: LoanAcceptanceModalProps) => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const { toast } = useToast();
@@ -53,51 +57,83 @@ export const LoanAcceptanceModal = ({
     const monthlyPayment = principal * (rate * Math.pow(1 + rate, months)) / (Math.pow(1 + rate, months) - 1);
     return monthlyPayment;
   };
-
   const handleAccept = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to accept this loan request.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // Update agreement with borrower signature
-      const { error: updateError } = await supabase
-        .from('loan_agreements')
-        .update({
-          borrower_signature: new Date().toISOString(),
-          status: 'active', // Now it becomes an active agreement
-          pdf_generated: true // We can now generate PDF
-        })
-        .eq('id', agreementId);
+      // Claim the loan request using RPC function with fallback
+      let claimResult;
+      try {
+        claimResult = await claimRequest({
+          requestId: agreementId,
+          lenderName: user.name || 'Unknown',
+          lenderEmail: user.email || ''
+        });
 
-      if (updateError) throw updateError;
+        if (!claimResult.success) {
+          throw new Error(claimResult.error || 'Failed to claim request');
+        }
+      } catch (rpcError) {
+        console.warn('RPC function not available, falling back to direct update:', rpcError);
+        
+        // Fallback to direct database update
+        const { error: updateError } = await supabase
+          .from('loan_agreements')
+          .update({
+            lender_id: user.id,
+            lender_name: user.name,
+            lender_email: user.email,
+            status: 'claimed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', agreementId);
 
-      // Generate and download the signed contract PDF
-      const contractData: ContractData = {
-        lenderName: agreement.lender_name || 'Unknown Lender',
-        lenderAddress: 'Address on file',
-        borrowerName: agreement.borrower_name,
-        borrowerAddress: agreement.borrower_email,
-        amount: agreement.amount,
-        interestRate: agreement.interest_rate,
-        durationMonths: agreement.duration_months,
-        purpose: agreement.purpose || 'Personal loan',
-        startDate: new Date(),
-        endDate: new Date(Date.now() + agreement.duration_months * 30 * 24 * 60 * 60 * 1000),
-        monthlyPayment: calculateMonthlyPayment(),
-        totalRepayment: agreement.amount + (agreement.amount * agreement.interest_rate * agreement.duration_months / (100 * 12))
-      };
+        if (updateError) throw updateError;
 
-      // Download the contract
-      downloadContract(contractData);      // Create transaction record
-      await supabase.from('transactions').insert({
-        agreement_id: agreementId,
-        amount: agreement.amount,
-        transaction_type: 'loan_disbursed',
-        status: 'pending',
-        payment_method: agreement.payment_method,
-        payment_reference: `LOAN-${agreementId.slice(0, 8)}`
+        // Create a mock result for consistency
+        claimResult = {
+          success: true,
+          borrower_name: agreement.borrower_name,
+          borrower_email: agreement.borrower_email,
+          amount: agreement.amount,
+          purpose: agreement.purpose,
+          duration: agreement.duration_months
+        };
+      }
+
+      // Send email notification to borrower
+      try {
+        await notifyLoanRequestClaimed({
+          borrowerName: claimResult.borrower_name || agreement.borrower_name,
+          borrowerEmail: claimResult.borrower_email || agreement.borrower_email,
+          lenderName: user.name || 'Unknown',
+          lenderEmail: user.email || '',
+          amount: claimResult.amount || agreement.amount,
+          purpose: claimResult.purpose || agreement.purpose,
+          duration: claimResult.duration || agreement.duration_months,
+          requestId: agreementId
+        });
+      } catch (emailError) {
+        console.warn('Email notification failed:', emailError);
+        // Don't fail the entire process if email fails
+      }
+
+      toast({
+        title: "Loan Request Accepted",
+        description: "You have successfully accepted this loan request. The borrower has been notified and can now review the terms.",
       });
 
-      // Send notification to lender
+      onAccepted?.();
+      onOpenChange(false);
       await supabase.from('notifications').insert({
         user_id: agreement.lender_id,
         type: 'loan_accepted',

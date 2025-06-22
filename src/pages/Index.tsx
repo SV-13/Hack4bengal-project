@@ -33,9 +33,7 @@ const Index = () => {
   console.log('Index component rendering...');
   const { user, loading } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  const navItems = [
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);  const navItems = [
     { name: "Features", link: "#features" },
     { name: "How It Works", link: "#how-it-works" },
     { name: "Security", link: "#security" },

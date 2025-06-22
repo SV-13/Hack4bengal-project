@@ -9,11 +9,12 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { Web3Provider } from "@/contexts/Web3Context";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import Index from "./pages/Index";
+import LoanOfferPage from "./pages/LoanOfferPage";
 import NotFound from "./pages/NotFound";
 
-console.log('App component loading...');
+console.log('LendIt App loading...');
 
-// Create query client with optimized settings
+// Create query client with optimized settings for P2P lending platform
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -26,7 +27,7 @@ const queryClient = new QueryClient({
 });
 
 const App = () => {
-  console.log('App component rendering...');
+  console.log('LendIt P2P Lending Platform rendering...');
   
   return (
     <QueryClientProvider client={queryClient}>
@@ -36,9 +37,18 @@ const App = () => {
         <AuthProvider>
           <Web3Provider>
             <BrowserRouter>
-              <Suspense fallback={<LoadingSpinner />}>
-                <Routes>
+              <Suspense fallback={<LoadingSpinner />}>                <Routes>
+                  {/* Main Landing Page */}
                   <Route path="/" element={<Index />} />
+                  
+                  {/* Loan Management Routes */}
+                  <Route path="/loan-offer/:agreementId" element={<LoanOfferPage />} />
+                  
+                  {/* Authentication Routes - handled by AuthModal in Index */}
+                  <Route path="/login" element={<Index />} />
+                  <Route path="/signup" element={<Index />} />
+                  
+                  {/* 404 Page */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
