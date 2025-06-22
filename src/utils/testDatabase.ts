@@ -22,10 +22,10 @@ export const testDatabaseConnection = async () => {
         borrower_id: 'test-user-id',
         borrower_name: 'Test User',
         borrower_email: 'test@example.com',
-        lender_id: 'test-lender-id',
+        lender_id: null, // No lender for loan requests
         amount: 1000,
         duration_months: 12,
-        purpose: 'test',
+        purpose: 'business',
         status: 'pending'
       })
       .select()
@@ -53,12 +53,11 @@ export const testDatabaseConnection = async () => {
 export const testLoanRequestCreation = async (userId: string, userEmail: string, userName: string) => {
   try {
     console.log('Testing loan request creation...');
-    
-    const testLoanData = {
+      const testLoanData = {
       borrower_id: userId,
       borrower_name: userName || 'Test User',
       borrower_email: userEmail,
-      lender_id: userId, // Temporary placeholder
+      lender_id: null, // No lender for loan requests
       amount: 5000,
       purpose: 'business',
       duration_months: 12,

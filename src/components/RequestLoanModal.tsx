@@ -75,13 +75,12 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
       }
 
       // Parse interest rate (optional)
-      const interestRate = formData.interestRate ? parseFloat(formData.interestRate) : 0;      // For now, let's try the direct insert approach with a dummy lender_id
-      // This is a temporary fix until we can update the remote database schema
+      const interestRate = formData.interestRate ? parseFloat(formData.interestRate) : 0;      // Create loan request with correct schema (lender_id can be null)
       const insertData = {
         borrower_id: user.id,
         borrower_name: user.name || user.email || 'Unknown User',
         borrower_email: user.email || '',
-        lender_id: user.id, // Temporary: Use borrower as lender for now, will be updated when claimed
+        lender_id: null, // No lender yet - this is a loan request
         amount: amount,
         purpose: formData.purpose,
         duration_months: duration,

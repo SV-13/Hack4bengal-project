@@ -152,12 +152,14 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
 
     setLoading(true);
 
-    try {
-      // Create loan proposal (not agreement yet - needs borrower acceptance)
+    try {      // Create loan offer (lender offering to borrower)
       const { data: proposal, error } = await supabase
         .from('loan_agreements')
         .insert({
           lender_id: user.id,
+          lender_name: user.name || user.email || 'Unknown Lender',
+          lender_email: user.email || '',
+          borrower_id: null, // Will be set when borrower accepts
           borrower_email: borrowerEmail,
           borrower_name: borrowerName,
           amount: parseCurrency(amount),
@@ -166,28 +168,41 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
           purpose,
           conditions,
           payment_method: paymentMethod,
-          payment_details: paymentDetails,
           smart_contract: smartContract,
-          status: 'proposed', // Changed from 'pending' to 'proposed'
-          lender_signature: new Date().toISOString(), // Lender signs when creating
-          borrower_signature: null, // Waiting for borrower signature
-          contract_address: null, // No contract until both parties sign
-          pdf_generated: false // No PDF until both parties sign
+          status: 'pending', // Use 'pending' status (available in schema)
+          data: {
+            paymentDetails: paymentDetails,
+            lenderSignedAt: new Date().toISOString(),
+            type: 'loan_offer'
+          }
         })
-        .select()        .single();
+        .select()
+        .single();
 
-      if (error) throw error;
-
-      // Send notification to borrower via email/SMS
-      await supabase.from('notifications').insert({
-        user_id: null, // For non-registered users
-        email: borrowerEmail,
-        type: 'loan_proposal',
-        title: 'New Loan Offer',
-        message: `${user.name} has offered you a loan of ${formatCurrency(parseCurrency(amount))} at ${interestRate}% interest for ${duration} months.`,
-        agreement_id: proposal.id,
-        read: false
-      });
+      if (error) throw error;      // Send notification (will be handled via email for now)
+      // TODO: Implement proper notification system after schema is updated
+      try {
+        await supabase.from('notifications').insert({
+          user_id: null, // For non-registered users, will be updated when they register
+          title: 'New Loan Offer',
+          message: `${user.name || 'A lender'} has offered you a loan of ${formatCurrency(parseCurrency(amount))} at ${interestRate}% interest for ${duration} months.`,
+          type: 'loan_request',
+          related_agreement_id: proposal.id,
+          read: false,
+          data: {
+            borrower_email: borrowerEmail,
+            offer_details: {
+              amount: parseCurrency(amount),
+              interest_rate: parseFloat(interestRate),
+              duration: parseInt(duration),
+              purpose
+            }
+          }
+        });
+      } catch (notificationError) {
+        console.warn('Notification creation failed:', notificationError);
+        // Don't fail the entire process if notification fails
+      }
 
       setCreatedAgreementId(proposal.id);
 
