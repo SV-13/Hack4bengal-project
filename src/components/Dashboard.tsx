@@ -17,6 +17,7 @@ import AgreementList from "@/components/AgreementList";
 import TransactionHistory from "@/components/TransactionHistory";
 import NotificationSystem from "@/components/NotificationSystem";
 import Preloader from "@/components/Preloader";
+import { testDatabaseConnection, testLoanRequestCreation } from "@/utils/testDatabase";
 
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from '@/integrations/supabase/client';
@@ -166,6 +167,35 @@ const Dashboard = () => {  const { user, logout } = useAuth();
       });
     }
   };
+  // Add temporary test functions
+  const testDatabase = async () => {
+    const result = await testDatabaseConnection();
+    console.log('Database test result:', result);
+    toast({
+      title: "Database Test",
+      description: result.connected ? "Database connected successfully" : "Database connection failed",
+      variant: result.connected ? "default" : "destructive"
+    });
+  };
+
+  const testLoanCreation = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to test loan creation",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const result = await testLoanRequestCreation(user.id, user.email || '', user.name || '');
+    console.log('Loan creation test result:', result);
+    toast({
+      title: result.success ? "✅ Loan Creation Test" : "❌ Loan Creation Test",
+      description: result.message,
+      variant: result.success ? "default" : "destructive"
+    });
+  };
 
   if (loading) {
     return (
@@ -258,6 +288,14 @@ const Dashboard = () => {  const { user, logout } = useAuth();
             >
               <DollarSign className="mr-2 h-4 w-4" />
               Request Loan
+            </Button>
+
+            {/* Test Buttons - Remove these in production */}
+            <Button onClick={testDatabase} variant="outline" size="sm">
+              🔧 Test Database
+            </Button>
+            <Button onClick={testLoanCreation} variant="outline" size="sm">
+              📝 Test Loan Creation
             </Button>
             
             {/* Wallet Connection Button */}

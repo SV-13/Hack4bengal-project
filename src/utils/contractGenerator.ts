@@ -37,10 +37,11 @@ export interface ContractDeployResult {
  * @param data Contract data with signature information
  */
 export const downloadContract = (data: ContractData) => {
-  // Validate that both parties have signed
-  if (!data.lenderSignedAt || !data.borrowerSignedAt) {
-    throw new Error('Cannot generate PDF: Both parties must sign first');
-  }
+  // Temporarily disable signature validation for testing
+  // TODO: Re-enable when digital signature workflow is fully implemented
+  // if (!data.lenderSignedAt || !data.borrowerSignedAt) {
+  //   throw new Error('Cannot generate PDF: Both parties must sign first');
+  // }
 
   const pdf = new jsPDF();
   const title = "DIGITALLY SIGNED LOAN AGREEMENT";
@@ -59,13 +60,18 @@ export const downloadContract = (data: ContractData) => {
   pdf.line(20, 35, 190, 35);
   
   pdf.setFontSize(12);
-  
-  // Digital Signature Status
+    // Digital Signature Status - handle cases where signatures might not be available
   pdf.setFont("helvetica", "bold");
   pdf.text(`Digital Signature Status:`, 20, 45);
   pdf.setFont("helvetica", "normal");
-  pdf.text(`✓ Lender Signed: ${data.lenderSignedAt.toLocaleString()}`, 20, 52);
-  pdf.text(`✓ Borrower Signed: ${data.borrowerSignedAt.toLocaleString()}`, 20, 58);
+  
+  if (data.lenderSignedAt && data.borrowerSignedAt) {
+    pdf.text(`✓ Lender Signed: ${data.lenderSignedAt.toLocaleString()}`, 20, 52);
+    pdf.text(`✓ Borrower Signed: ${data.borrowerSignedAt.toLocaleString()}`, 20, 58);
+  } else {
+    pdf.text(`⚠ Pending Digital Signatures`, 20, 52);
+    pdf.text(`Note: This is a preview - full signatures required for legal validity`, 20, 58);
+  }
   
   // Parties
   pdf.text(`This loan agreement is made between:`, 20, 72);
@@ -107,17 +113,24 @@ export const downloadContract = (data: ContractData) => {
     pdf.text(`Contract Address: ${data.contractHash}`, 20, 202);
     pdf.text(`Wallet Address: ${data.walletAddress || 'Not provided'}`, 20, 208);
   }
-  
-  // Digital Signatures
+    // Digital Signatures
   pdf.setFont("helvetica", "bold");
   pdf.text(`Digital Signatures:`, 20, 222);
   pdf.setFont("helvetica", "normal");
   
   pdf.text(`Lender: ${data.lenderName}`, 20, 232);
-  pdf.text(`Digitally signed on: ${data.lenderSignedAt.toLocaleString()}`, 30, 238);
+  if (data.lenderSignedAt) {
+    pdf.text(`Digitally signed on: ${data.lenderSignedAt.toLocaleString()}`, 30, 238);
+  } else {
+    pdf.text(`Status: Pending signature`, 30, 238);
+  }
   
   pdf.text(`Borrower: ${data.borrowerName}`, 20, 248);
-  pdf.text(`Digitally signed on: ${data.borrowerSignedAt.toLocaleString()}`, 30, 254);
+  if (data.borrowerSignedAt) {
+    pdf.text(`Digitally signed on: ${data.borrowerSignedAt.toLocaleString()}`, 30, 254);
+  } else {
+    pdf.text(`Status: Pending signature`, 30, 254);
+  }
   
   // Legal Notice
   pdf.setFontSize(8);

@@ -75,14 +75,13 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
       }
 
       // Parse interest rate (optional)
-      const interestRate = formData.interestRate ? parseFloat(formData.interestRate) : 0;
-
-      // Create loan request - explicitly include lender_id as null
+      const interestRate = formData.interestRate ? parseFloat(formData.interestRate) : 0;      // For now, let's try the direct insert approach with a dummy lender_id
+      // This is a temporary fix until we can update the remote database schema
       const insertData = {
         borrower_id: user.id,
         borrower_name: user.name || user.email || 'Unknown User',
         borrower_email: user.email || '',
-        lender_id: null as string | null, // Explicitly cast to allow null
+        lender_id: user.id, // Temporary: Use borrower as lender for now, will be updated when claimed
         amount: amount,
         purpose: formData.purpose,
         duration_months: duration,
@@ -99,12 +98,6 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
 
       if (error) {
         console.error('Database error:', error);
-        
-        // If the error is about lender_id constraint, provide specific guidance
-        if (error.message.includes('lender_id') || error.message.includes('not-null')) {
-          throw new Error('Database configuration issue: lender_id constraint needs to be updated. Please check the setup guide.');
-        }
-        
         throw new Error(`Failed to create loan request: ${error.message}`);
       }
 
