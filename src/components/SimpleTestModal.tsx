@@ -59,15 +59,14 @@ export const SimpleTestModal = ({ open, onOpenChange }: SimpleTestModalProps) =>
 
     setLoading(true);
     try {
-      console.log('User info:', { id: user.id, email: user.email, name: user.name });
-
-      // Test minimal insert
+      console.log('User info:', { id: user.id, email: user.email, name: user.name });      // Test minimal insert - include lender_id as null for loan requests
       const { data, error } = await supabase
         .from('loan_agreements')
         .insert({
           borrower_id: user.id,
           borrower_name: user.name || 'Test User',
           borrower_email: user.email || 'test@test.com',
+          lender_id: null as string | null, // Explicitly set to null for loan requests
           amount: 100,
           purpose: 'test',
           duration_months: 1,

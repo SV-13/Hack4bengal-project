@@ -17,7 +17,7 @@ import AgreementList from "@/components/AgreementList";
 import TransactionHistory from "@/components/TransactionHistory";
 import NotificationSystem from "@/components/NotificationSystem";
 import Preloader from "@/components/Preloader";
-import { SimpleTestModal } from "@/components/SimpleTestModal";
+
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from "@/utils/currency";
@@ -71,7 +71,6 @@ const Dashboard = () => {  const { user, logout } = useAuth();
     networkName: networkName || 'Unknown Network'
   }), [isConnected, account, balance, networkName]);  const { toast } = useToast();  const [showCreateLoan, setShowCreateLoan] = useState(false);
   const [showRequestLoan, setShowRequestLoan] = useState(false);
-  const [showTestModal, setShowTestModal] = useState(false);
   const [showLoanRequest, setShowLoanRequest] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);const [stats, setStats] = useState<DashboardStats>({
     totalLent: 0,
@@ -253,20 +252,12 @@ const Dashboard = () => {  const { user, logout } = useAuth();
             >
               <Plus className="mr-2 h-4 w-4" />
               Lend Money
-            </Button>
-              <Button 
+            </Button>            <Button 
               onClick={() => setShowRequestLoan(true)}
               className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
             >
               <DollarSign className="mr-2 h-4 w-4" />
               Request Loan
-            </Button>
-            
-            <Button 
-              onClick={() => setShowTestModal(true)}
-              className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
-            >
-              🔧 Test Database
             </Button>
             
             {/* Wallet Connection Button */}
@@ -600,7 +591,6 @@ const Dashboard = () => {  const { user, logout } = useAuth();
         </Tabs>
       </div>      <CreateLoanModal open={showCreateLoan} onOpenChange={setShowCreateLoan} />
       <RequestLoanModal open={showRequestLoan} onOpenChange={setShowRequestLoan} />
-      <SimpleTestModal open={showTestModal} onOpenChange={setShowTestModal} />
       {selectedRequest && (
         <LoanRequestModal 
           open={showLoanRequest}          onOpenChange={setShowLoanRequest}
