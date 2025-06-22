@@ -56,8 +56,7 @@ export const LoanAcceptanceModal = ({
     
     const monthlyPayment = principal * (rate * Math.pow(1 + rate, months)) / (Math.pow(1 + rate, months) - 1);
     return monthlyPayment;
-  };
-  const handleAccept = async () => {
+  };  const handleAccept = async () => {
     if (!user) {
       toast({
         title: "Authentication Required",
@@ -85,17 +84,16 @@ export const LoanAcceptanceModal = ({
       } catch (rpcError) {
         console.warn('RPC function not available, falling back to direct update:', rpcError);
         
-        // Fallback to direct database update
+        // Fallback to direct database update - claim the loan request by adding lender info
         const { error: updateError } = await supabase
           .from('loan_agreements')
           .update({
             lender_id: user.id,
-            lender_name: user.name,
-            lender_email: user.email,
-            status: 'claimed',
+            status: 'accepted', // Change status to accepted (claimed by lender)
             updated_at: new Date().toISOString()
           })
-          .eq('id', agreementId);
+          .eq('id', agreementId)
+          .is('lender_id', null); // Only update if it's still unclaimed
 
         if (updateError) throw updateError;
 

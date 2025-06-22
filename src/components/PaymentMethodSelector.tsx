@@ -36,7 +36,8 @@ import {
   Banknote,
   Shield
 } from "lucide-react";
-import { PAYMENT_TEST_DATA } from '@/config/paymentConfig';
+import { PAYMENT_TEST_DATA, PAYMENT_TEST_INSTRUCTIONS } from '@/config/paymentConfig';
+import { PaymentTestHelp } from './PaymentTestHelp';
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Wand2 } from "lucide-react";
 import type { LucideIcon } from 'lucide-react';
@@ -702,9 +703,31 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
         return null;
     }
   };
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-6">      {/* Test Mode Instructions */}
+      <Alert className="border-amber-200 bg-amber-50">
+        <Shield className="h-4 w-4 text-amber-600" />
+        <AlertDescription className="text-amber-800">
+          <div className="flex justify-between items-start">
+            <div className="space-y-2 flex-1">
+              <div className="font-medium">🧪 Test Mode Active - No Real Money Will Be Charged</div>
+              {selectedMethod && PAYMENT_TEST_INSTRUCTIONS[selectedMethod] && (
+                <div className="space-y-1">
+                  <div className="text-sm font-medium">{PAYMENT_TEST_INSTRUCTIONS[selectedMethod].title}</div>
+                  <div className="text-xs">{PAYMENT_TEST_INSTRUCTIONS[selectedMethod].description}</div>
+                  <ul className="text-xs space-y-1 ml-4">
+                    {PAYMENT_TEST_INSTRUCTIONS[selectedMethod].instructions.map((instruction, index) => (
+                      <li key={index} className="list-disc">{instruction}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <PaymentTestHelp selectedMethod={selectedMethod} />
+          </div>
+        </AlertDescription>
+      </Alert>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {paymentMethods.map((method) => {
           const Icon = paymentIcons[method.id as PaymentMethod];

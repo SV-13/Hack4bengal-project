@@ -65,28 +65,25 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
           throw new Error(rpcResult.error || 'RPC function failed');
         }
       } catch (rpcError) {
-        console.warn('RPC function not available, falling back to direct insertion:', rpcError);
-        
-        // Fallback to direct database insertion
+        console.warn('RPC function not available, falling back to direct insertion:', rpcError);        // Fallback to direct database insertion into loan_agreements
+        // Create a loan request by inserting with lender_id = null to indicate it's a request
         const { data, error } = await supabase
           .from('loan_agreements')
           .insert({
             borrower_id: user.id,
-            borrower_name: user.name,
-            borrower_email: user.email,
+            borrower_name: user.name || 'Unknown',
+            borrower_email: user.email || '',
+            lender_id: null, // This indicates it's a loan request, not an agreement yet
             amount: parseFloat(formData.amount),
             purpose: formData.purpose,
             duration_months: parseInt(formData.duration),
             interest_rate: parseFloat(formData.interestRate) || 0,
-            conditions: JSON.stringify({
-              description: formData.description || null,
-              type: 'loan_request'
-            }),
+            conditions: formData.description || null,
             status: 'pending',
-            lender_id: null,
-            lender_name: null,
-            lender_email: null,
+            payment_method: 'upi', // Default payment method
+            smart_contract: false,
             created_at: new Date().toISOString()
+            // Note: lender_name and lender_email will be null for requests
           })
           .select();
 

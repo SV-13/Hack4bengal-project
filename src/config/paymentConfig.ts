@@ -65,7 +65,7 @@ export const paymentConfig: PaymentConfig = {
   },
 };
 
-// Payment sandbox test data
+// Payment sandbox test data and instructions
 export const PAYMENT_TEST_DATA = {
   cards: [
     { number: '4111 1111 1111 1111', expiryMonth: '12', expiryYear: '29', cvv: '123', type: 'visa', name: 'Test Card (Success)' },
@@ -73,9 +73,10 @@ export const PAYMENT_TEST_DATA = {
     { number: '4000 0000 0000 0002', expiryMonth: '12', expiryYear: '29', cvv: '123', type: 'visa', name: 'Test Card (Declined)' }
   ],
   upi: {
-    success: 'success@upi',
-    failure: 'failure@upi',
-    pending: 'pending@upi'
+    success: 'success@razorpay',
+    failure: 'failure@razorpay',
+    pending: 'pending@razorpay',
+    test_id: 'test@paytm'
   },
   bank: {
     accountNumber: '1112220001',
@@ -85,6 +86,47 @@ export const PAYMENT_TEST_DATA = {
   wallet: {
     phoneNumber: '9999999999',
     provider: 'paytm'
+  }
+};
+
+// Test mode instructions for users
+export const PAYMENT_TEST_INSTRUCTIONS = {
+  razorpay: {
+    title: 'Razorpay Test Mode',
+    description: 'This is running in test mode. No real money will be charged.',
+    instructions: [
+      'Use any test card: 4111 1111 1111 1111 (Visa)',
+      'Use any CVV (e.g., 123) and future expiry date',
+      'For UPI, use success@razorpay for successful payment',
+      'Use failure@razorpay to simulate payment failure'
+    ]
+  },
+  upi: {
+    title: 'UPI Test Mode',
+    description: 'Simulated UPI payments - no real transactions',
+    instructions: [
+      'Use success@razorpay for successful payment simulation',
+      'Use failure@razorpay for failed payment simulation',
+      'Any other UPI ID will show pending status'
+    ]
+  },
+  bank: {
+    title: 'Bank Transfer Simulation',
+    description: 'Shows bank transfer instructions - no real transfer',
+    instructions: [
+      'This will show you bank transfer details',
+      'No actual money transfer happens in test mode',
+      'Use account: 1112220001, IFSC: HDFC0000001'
+    ]
+  },
+  crypto: {
+    title: 'Cryptocurrency Test Mode',
+    description: 'Simulated crypto payments using test networks',
+    instructions: [
+      'Use test wallet addresses only',
+      'Ethereum testnet: Use Sepolia or Goerli networks',
+      'Bitcoin testnet: Use testnet addresses only'
+    ]
   }
 };
 
