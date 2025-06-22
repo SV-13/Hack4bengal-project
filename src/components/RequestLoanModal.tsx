@@ -27,16 +27,17 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
     duration: '',
     interestRate: '',
     description: ''
-  });
-  const handleSubmit = async (e: React.FormEvent) => {
+  });  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
     try {
       setLoading(true);
+      console.log('Starting loan request submission...', { user: user.id, formData });
 
       // Validate required fields
       if (!formData.amount || !formData.purpose || !formData.duration) {
+        console.log('Validation failed - missing required fields');
         toast({
           title: "Missing Information",
           description: "Please fill in all required fields.",
@@ -45,74 +46,67 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
         return;
       }
 
-      let requestId: string | null = null;
+      console.log('Validation passed, proceeding with database insertion...');let requestId: string | null = null;
 
-      // Try using the new RPC function first, with fallback to direct insertion
+      // Skip RPC for now and use direct insertion (more reliable)
+      console.log('Using direct database insertion for loan request...');
+        // Direct database insertion into loan_agreements
+      // Create a loan request by inserting with lender_id = null to indicate it's a request
       try {
-        const rpcResult = await requestLoan({
-          borrowerName: user.name || 'Unknown',
-          borrowerEmail: user.email || '',
+        console.log('Attempting database insertion with data:', {
+          borrower_id: user.id,
+          borrower_name: user.name || 'Unknown',
+          borrower_email: user.email || '',
           amount: parseFloat(formData.amount),
           purpose: formData.purpose,
-          durationMonths: parseInt(formData.duration),
-          interestRate: parseFloat(formData.interestRate) || 0,
-          description: formData.description || undefined
+          duration_months: parseInt(formData.duration),
+          interest_rate: parseFloat(formData.interestRate) || 0,
         });
 
-        if (rpcResult.success && rpcResult.request_id) {
-          requestId = rpcResult.request_id;
-        } else {
-          throw new Error(rpcResult.error || 'RPC function failed');
-        }      } catch (rpcError) {
-        console.warn('RPC function not available, falling back to direct insertion:', rpcError);
-        
-        // Fallback to direct database insertion into loan_agreements
-        // Create a loan request by inserting with lender_id = null to indicate it's a request
-        try {
-          const { data, error } = await supabase
-            .from('loan_agreements')
-            .insert({
-              borrower_id: user.id,
-              borrower_name: user.name || 'Unknown',
-              borrower_email: user.email || '',
-              lender_id: null, // This indicates it's a loan request, not an agreement yet
-              amount: parseFloat(formData.amount),
-              purpose: formData.purpose,
-              duration_months: parseInt(formData.duration),
-              interest_rate: parseFloat(formData.interestRate) || 0,
-              conditions: formData.description || null,
-              status: 'pending',
-              payment_method: 'upi', // Default payment method
-              smart_contract: false,
-              created_at: new Date().toISOString()
-              // Note: lender_name and lender_email will be null for requests
-            })
-            .select();
+        const { data, error } = await supabase
+          .from('loan_agreements')
+          .insert({
+            borrower_id: user.id,
+            borrower_name: user.name || 'Unknown',
+            borrower_email: user.email || '',
+            lender_id: null, // This indicates it's a loan request, not an agreement yet
+            amount: parseFloat(formData.amount),
+            purpose: formData.purpose,
+            duration_months: parseInt(formData.duration),
+            interest_rate: parseFloat(formData.interestRate) || 0,
+            conditions: formData.description || null,
+            status: 'pending',
+            payment_method: 'upi', // Default payment method
+            smart_contract: false,
+            created_at: new Date().toISOString()
+            // Note: lender_name and lender_email will be null for requests
+          })
+          .select();
 
-          if (error) {
-            console.error('Database insertion error:', error);
-            throw new Error(`Database error: ${error.message}`);
-          }
+        console.log('Database insertion result:', { data, error });
 
-          if (!data || data.length === 0) {
-            throw new Error('No data returned from database insertion');
-          }
-
-          requestId = data[0].id;
-          console.log('Successfully created loan request with ID:', requestId);
-          
-        } catch (dbError) {
-          console.error('Direct database insertion failed:', dbError);
-          throw new Error(`Failed to create loan request: ${dbError.message}`);
+        if (error) {
+          console.error('Database insertion error:', error);
+          throw new Error(`Database error: ${error.message}`);
         }
+
+        if (!data || data.length === 0) {
+          throw new Error('No data returned from database insertion');
+        }
+
+        requestId = data[0].id;
+        console.log('Successfully created loan request with ID:', requestId);
+        
+      } catch (dbError) {
+        console.error('Direct database insertion failed:', dbError);
+        throw new Error(`Failed to create loan request: ${dbError.message}`);
       }
 
       if (!requestId) {
         throw new Error('Failed to create loan request - no ID returned');
-      }
-
-      // Send email notification (if configured)
+      }      // Send email notification (if configured)
       try {
+        console.log('Attempting to send email notification...');
         await notifyLoanRequestCreated({
           borrowerName: user.name || 'Unknown',
           borrowerEmail: user.email || '',
@@ -123,10 +117,13 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
           requestId: requestId,
           recipients: [] // For now, no specific recipients - could be enhanced later
         });
+        console.log('Email notification sent successfully');
       } catch (emailError) {
         console.warn('Email notification failed:', emailError);
         // Don't fail the entire request if email fails
       }
+
+      console.log('Loan request creation completed successfully');
 
       toast({
         title: "Loan Request Submitted",
