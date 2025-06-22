@@ -17,6 +17,7 @@ import AgreementList from "@/components/AgreementList";
 import TransactionHistory from "@/components/TransactionHistory";
 import NotificationSystem from "@/components/NotificationSystem";
 import Preloader from "@/components/Preloader";
+import { LoanRequestDebugger } from "@/components/LoanRequestDebugger";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from "@/utils/currency";
@@ -439,8 +440,7 @@ const Dashboard = () => {  const { user, logout } = useAuth();
           </Card>
         </div>
 
-        {/* Main Content with Tabs */}
-        <Tabs defaultValue="overview" className="space-y-6">          <TabsList className="grid w-full grid-cols-8">
+        {/* Main Content with Tabs */}        <Tabs defaultValue="overview" className="space-y-6">          <TabsList className="grid w-full grid-cols-9">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="management">Manage</TabsTrigger>
             <TabsTrigger value="browse">Browse</TabsTrigger>
@@ -449,6 +449,7 @@ const Dashboard = () => {  const { user, logout } = useAuth();
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="requests">Requests</TabsTrigger>
+            <TabsTrigger value="debug">Debug</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -590,6 +591,10 @@ const Dashboard = () => {  const { user, logout } = useAuth();
                   </div>
                 )}              </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="debug">
+            <LoanRequestDebugger />
           </TabsContent>
         </Tabs>
       </div>      <CreateLoanModal open={showCreateLoan} onOpenChange={setShowCreateLoan} />
