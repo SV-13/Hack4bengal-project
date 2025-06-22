@@ -430,6 +430,7 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
               onPaymentDetails={setPaymentDetails}
               smartContract={smartContract}
               onSmartContractChange={setSmartContract}
+              initialPaymentDetails={paymentDetails}
             />
 
             {/* Action Buttons */}
