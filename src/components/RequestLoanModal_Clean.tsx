@@ -75,23 +75,21 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
       }
 
       // Parse interest rate (optional)
-      const interestRate = formData.interestRate ? parseFloat(formData.interestRate) : 0;      // Create loan request with correct schema (lender_id can be null)
-      const insertData = {
-        borrower_id: user.id,
-        borrower_name: user.name || user.email || 'Unknown User',
-        borrower_email: user.email || '',
-        lender_id: null, // No lender yet - this is a loan request
-        amount: amount,
-        purpose: formData.purpose,
-        duration_months: duration,
-        interest_rate: interestRate,
-        conditions: formData.description || '',
-        status: 'pending' as const
-      };
-
+      const interestRate = formData.interestRate ? parseFloat(formData.interestRate) : 0;      // Create loan request with minimal required fields
       const { data, error } = await supabase
         .from('loan_agreements')
-        .insert(insertData)
+        .insert({
+          borrower_id: user.id,
+          borrower_name: user.name || user.email || 'Unknown User',
+          borrower_email: user.email || '',
+          lender_id: null, // This indicates it's a loan request, not an agreement yet
+          amount: amount,
+          purpose: formData.purpose,
+          duration_months: duration,
+          interest_rate: interestRate,
+          conditions: formData.description || '',
+          status: 'pending'
+        })
         .select()
         .single();
 
@@ -266,7 +264,7 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
               disabled={loading}
               className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
             >
-              {loading ? "Submitting..." : "Submit Request"}
+              {loading ? "Creating..." : "Create Request"}
             </Button>
           </div>
         </form>

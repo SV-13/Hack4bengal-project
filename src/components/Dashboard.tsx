@@ -68,8 +68,7 @@ const Dashboard = () => {  const { user, logout } = useAuth();
     account: account ? `${account.slice(0, 6)}...${account.slice(-4)}` : null,
     balance: balance ? `${parseFloat(balance).toFixed(4)} ETH` : '0.0000 ETH',
     networkName: networkName || 'Unknown Network'
-  }), [isConnected, account, balance, networkName]);  const { toast } = useToast();
-  const [showCreateLoan, setShowCreateLoan] = useState(false);
+  }), [isConnected, account, balance, networkName]);  const { toast } = useToast();  const [showCreateLoan, setShowCreateLoan] = useState(false);
   const [showRequestLoan, setShowRequestLoan] = useState(false);
   const [showLoanRequest, setShowLoanRequest] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);const [stats, setStats] = useState<DashboardStats>({
@@ -80,9 +79,7 @@ const Dashboard = () => {  const { user, logout } = useAuth();
   });
   const [pendingRequests, setPendingRequests] = useState<LoanRequest[]>([]);
   const [agreements, setAgreements] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
+  const [loading, setLoading] = useState(true);  useEffect(() => {
     if (user) {
       fetchDashboardData();
     }
@@ -91,8 +88,7 @@ const Dashboard = () => {  const { user, logout } = useAuth();
   const fetchDashboardData = async () => {
     if (!user) return;
 
-    try {
-      // Fetch loan agreements where user is lender or borrower
+    try {      // Fetch loan agreements where user is lender or borrower
       const { data: agreements, error } = await supabase
         .from('loan_agreements')
         .select('*')
@@ -164,8 +160,7 @@ const Dashboard = () => {  const { user, logout } = useAuth();
         description: "Failed to log out. Please try again.",
         variant: "destructive",
       });
-    }
-  };
+    }  };
 
   if (loading) {
     return (
@@ -190,12 +185,29 @@ const Dashboard = () => {  const { user, logout } = useAuth();
                 <span className="text-xl font-bold text-gray-900">Lendit</span>
               </div>
             </div>
-            
-            <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="sm">
+              <div className="flex items-center space-x-4">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => {
+                  toast({
+                    title: "Notifications",
+                    description: "Check the 'Notifications' tab below for all your alerts and updates.",
+                  });
+                }}
+              >
                 <Bell className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => {
+                  toast({
+                    title: "Settings",
+                    description: "Settings panel will be available in a future update. Contact support for account changes.",
+                  });
+                }}
+              >
                 <Settings className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="sm" onClick={handleLogout}>
@@ -235,15 +247,12 @@ const Dashboard = () => {  const { user, logout } = useAuth();
             >
               <Plus className="mr-2 h-4 w-4" />
               Lend Money
-            </Button>
-            
-            <Button 
+            </Button>            <Button 
               onClick={() => setShowRequestLoan(true)}
               className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
             >
               <DollarSign className="mr-2 h-4 w-4" />
-              Request Loan
-            </Button>
+              Request Loan            </Button>
             
             {/* Wallet Connection Button */}
             {!isConnected ? (
@@ -276,12 +285,27 @@ const Dashboard = () => {  const { user, logout } = useAuth();
                 </Button>
               </div>
             )}
-            
-            <Button variant="outline">
+              <Button 
+              variant="outline"
+              onClick={() => {
+                toast({
+                  title: "Contact Management",
+                  description: "Contact management feature coming soon! For now, you can send loan invitations by email when creating loans.",
+                });
+              }}
+            >
               <Users className="mr-2 h-4 w-4" />
               View Contacts
             </Button>
-            <Button variant="outline">
+            <Button 
+              variant="outline"
+              onClick={() => {
+                toast({
+                  title: "My Agreements",
+                  description: "Check the 'Manage' tab below to view and manage all your loan agreements.",
+                });
+              }}
+            >
               <FileText className="mr-2 h-4 w-4" />
               My Agreements
             </Button>
@@ -407,8 +431,7 @@ const Dashboard = () => {  const { user, logout } = useAuth();
           </Card>
         </div>
 
-        {/* Main Content with Tabs */}
-        <Tabs defaultValue="overview" className="space-y-6">          <TabsList className="grid w-full grid-cols-8">
+        {/* Main Content with Tabs */}        <Tabs defaultValue="overview" className="space-y-6">          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="management">Manage</TabsTrigger>
             <TabsTrigger value="browse">Browse</TabsTrigger>

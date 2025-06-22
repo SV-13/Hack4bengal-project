@@ -1,4 +1,3 @@
-
 import { Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -37,8 +36,7 @@ const App = () => {
         <AuthProvider>
           <Web3Provider>
             <BrowserRouter>
-              <Suspense fallback={<LoadingSpinner />}>                <Routes>
-                  {/* Main Landing Page */}
+              <Suspense fallback={<LoadingSpinner />}>                <Routes>                  {/* Main Landing Page */}
                   <Route path="/" element={<Index />} />
                   
                   {/* Loan Management Routes */}

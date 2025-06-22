@@ -1,17 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import { 
   Smartphone, 
   Building2, 
   Wallet, 
   Bitcoin, 
-  Banknote
+  Banknote,
+  Wand2
 } from "lucide-react";
+import { PAYMENT_TEST_DATA } from '@/config/paymentConfig';
 
 export type PaymentMethodType = 'upi' | 'bank' | 'wallet' | 'crypto' | 'cash';
 
@@ -21,6 +24,7 @@ interface PaymentMethodInputProps {
   onPaymentDetails: (details: any) => void;
   smartContract?: boolean;
   onSmartContractChange?: (enabled: boolean) => void;
+  initialPaymentDetails?: any; // Add this to accept initial values
 }
 
 const paymentMethods = [
@@ -36,12 +40,44 @@ export const PaymentMethodInput = ({
   onMethodChange,
   onPaymentDetails,
   smartContract = false,
-  onSmartContractChange
+  onSmartContractChange,
+  initialPaymentDetails
 }: PaymentMethodInputProps) => {
   const [upiId, setUpiId] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [ifsc, setIfsc] = useState('');
   const [walletAddress, setWalletAddress] = useState('');
+  useEffect(() => {
+    if (initialPaymentDetails) {
+      setUpiId(initialPaymentDetails.upiId || '');
+      setAccountNumber(initialPaymentDetails.accountNumber || '');
+      setIfsc(initialPaymentDetails.ifsc || '');
+      setWalletAddress(initialPaymentDetails.walletAddress || '');
+    }
+  }, [initialPaymentDetails]);
+
+  // Trigger validation when form values change
+  useEffect(() => {
+    validateAndUpdateDetails(selectedMethod);
+  }, [upiId, accountNumber, ifsc, walletAddress, selectedMethod]);
+
+  const handleAutofill = () => {
+    switch (selectedMethod) {
+      case 'upi':
+        setUpiId(PAYMENT_TEST_DATA.upi.success);
+        break;
+      case 'bank':
+        setAccountNumber(PAYMENT_TEST_DATA.bank.accountNumber);
+        setIfsc(PAYMENT_TEST_DATA.bank.ifsc);
+        break;
+      case 'wallet':
+        setWalletAddress(PAYMENT_TEST_DATA.wallet.phoneNumber);
+        break;
+      case 'crypto':
+        setWalletAddress('0x742d35Cc6634C0532925a3b844Bc454e4438f44e');
+        break;
+    }
+  };
 
   const validateAndUpdateDetails = (method: PaymentMethodType) => {
     let details: any = { isValid: false };
@@ -94,21 +130,33 @@ export const PaymentMethodInput = ({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          Payment Method
-          {onSmartContractChange && (
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="smart-contract"
-                checked={smartContract}
-                onCheckedChange={onSmartContractChange}
-              />
-              <Label htmlFor="smart-contract" className="text-sm">Smart Contract</Label>
-            </div>
-          )}
-        </CardTitle>
+    <Card>      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center">
+            Payment Method
+          </CardTitle>
+          <div className="flex items-center space-x-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleAutofill}
+              className="flex items-center gap-1"
+            >
+              <Wand2 className="h-3 w-3" />
+              Autofill
+            </Button>
+            {onSmartContractChange && (
+              <>
+                <Switch
+                  id="smart-contract"
+                  checked={smartContract}
+                  onCheckedChange={onSmartContractChange}
+                />
+                <Label htmlFor="smart-contract" className="text-sm">Smart Contract</Label>
+              </>
+            )}
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <RadioGroup value={selectedMethod} onValueChange={handleMethodChange}>

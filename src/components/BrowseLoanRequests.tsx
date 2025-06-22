@@ -46,14 +46,15 @@ export const BrowseLoanRequests = ({ onOfferLoan }: BrowseLoanRequestsProps) => 
   const [filter, setFilter] = useState<string>('all');
   const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);
   const [acceptanceModalOpen, setAcceptanceModalOpen] = useState(false);
-
-  // Helper function to parse conditions JSON
+  // Helper function to parse conditions (now just a simple string)
   const parseConditions = (conditions: string) => {
-    try {
-      return JSON.parse(conditions || '{}');
-    } catch {
-      return {};
-    }
+    return {
+      description: conditions || '',
+      collateral: '',
+      monthlyIncome: 0,
+      employmentStatus: '',
+      creditScore: 0
+    };
   };
 
   useEffect(() => {
@@ -68,53 +69,32 @@ export const BrowseLoanRequests = ({ onOfferLoan }: BrowseLoanRequestsProps) => 
         requestData = await getAvailableLoanRequests();
       } catch (rpcError) {
         console.warn('RPC function not available, falling back to direct query:', rpcError);
-        
-        // Fallback to direct database query
+          // Fallback to direct database query
         const { data, error } = await supabase
           .from('loan_agreements')
           .select('*')
           .eq('status', 'pending')
-          .is('lender_id', null) // Only requests without lenders
+          .is('lender_id', null) // Only requests without lenders (loan requests)
           .neq('borrower_id', user?.id || '') // Don't show user's own requests
           .order('created_at', { ascending: false });
 
         if (error) throw error;
         requestData = data || [];
-      }
-
-      // Filter only loan requests (not regular agreements) and transform data
-      const transformedData = requestData
-        .filter(item => {
-          try {
-            const conditions = JSON.parse(item.conditions || '{}');
-            return conditions.type === 'loan_request';
-          } catch {
-            return false;
-          }
-        })
-        .map(item => {
-          const parsedConditions = JSON.parse(item.conditions || '{}');
-          return {
-            id: item.id,
-            borrower_id: item.borrower_id,
-            borrower_name: item.borrower_name,
-            borrower_email: item.borrower_email,
-            amount: item.amount,
-            purpose: item.purpose,
-            duration_months: item.duration_months,
-            interest_rate: item.interest_rate || 10, // Use existing rate or default
-            conditions: JSON.stringify({
-              collateral: parsedConditions.collateral || '',
-              monthlyIncome: parsedConditions.monthlyIncome || 0,
-              employmentStatus: parsedConditions.employmentStatus || '',
-              creditScore: parsedConditions.creditScore || 0,
-              description: parsedConditions.description || ''
-            }),
-            status: item.status,
-            created_at: item.created_at,
-            lender_id: item.lender_id
-          };
-        });
+      }      // Transform data - no need to filter by conditions since lender_id = null indicates loan requests
+      const transformedData = requestData.map(item => ({
+        id: item.id,
+        borrower_id: item.borrower_id,
+        borrower_name: item.borrower_name || 'Unknown',
+        borrower_email: item.borrower_email || '',
+        amount: item.amount,
+        purpose: item.purpose || 'other',
+        duration_months: item.duration_months,
+        interest_rate: item.interest_rate || 10, // Default rate
+        conditions: item.conditions || '', // Description from borrower
+        status: item.status,
+        created_at: item.created_at,
+        lender_id: item.lender_id
+      }));
 
       setRequests(transformedData);
     } catch (error: any) {
@@ -286,28 +266,27 @@ export const BrowseLoanRequests = ({ onOfferLoan }: BrowseLoanRequestsProps) => 
                       <span className="ml-1 font-medium">{request.interest_rate}%</span>
                     </div>
                   )}
-                  
-                  {conditions.monthly_income && (
+                    {conditions.monthlyIncome > 0 && (
                     <div className="flex items-center">
                       <DollarSign className="mr-2 h-3 w-3 text-gray-400" />
                       <span className="text-gray-600">Income:</span>
-                      <span className="ml-1 font-medium">{formatCurrency(conditions.monthly_income)}/mo</span>
+                      <span className="ml-1 font-medium">{formatCurrency(conditions.monthlyIncome)}/mo</span>
                     </div>
                   )}
                   
-                  {conditions.employment_status && (
+                  {conditions.employmentStatus && (
                     <div className="flex items-center">
                       <Briefcase className="mr-2 h-3 w-3 text-gray-400" />
                       <span className="text-gray-600">Status:</span>
-                      <span className="ml-1 font-medium capitalize">{conditions.employment_status.replace('_', ' ')}</span>
+                      <span className="ml-1 font-medium capitalize">{conditions.employmentStatus.replace('_', ' ')}</span>
                     </div>
                   )}
                   
-                  {conditions.credit_score && (
+                  {conditions.creditScore > 0 && (
                     <div className="flex items-center">
                       <Shield className="mr-2 h-3 w-3 text-gray-400" />
                       <span className="text-gray-600">Credit:</span>
-                      <span className="ml-1 font-medium">{conditions.credit_score}</span>
+                      <span className="ml-1 font-medium">{conditions.creditScore}</span>
                     </div>
                   )}
                 </div>

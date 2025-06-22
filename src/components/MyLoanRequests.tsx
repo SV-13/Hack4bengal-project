@@ -50,27 +50,16 @@ export const MyLoanRequests = ({ onCreateNew }: MyLoanRequestsProps) => {
     
     try {
       setLoading(true);
-      
-      const { data, error } = await supabase
+        const { data, error } = await supabase
         .from('loan_agreements')
         .select('*')
         .eq('borrower_id', user.id)
-        .is('lender_id', null) // Only show requests without lenders (actual requests)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      // Filter only loan requests (not regular agreements)
-      const loanRequests = (data || []).filter(item => {
-        try {
-          const conditions = JSON.parse(item.conditions || '{}');
-          return conditions.type === 'loan_request';
-        } catch {
-          return false;
-        }
-      });
-
-      setRequests(loanRequests);
+      // All records where user is borrower are their requests/agreements
+      setRequests(data || []);
     } catch (error: any) {
       console.error('Error fetching my requests:', error);
       toast({
@@ -82,13 +71,14 @@ export const MyLoanRequests = ({ onCreateNew }: MyLoanRequestsProps) => {
       setLoading(false);
     }
   };
-
   const parseConditions = (conditions: string) => {
-    try {
-      return JSON.parse(conditions || '{}');
-    } catch {
-      return {};
-    }
+    return {
+      description: conditions || '',
+      collateral: '',
+      monthlyIncome: 0,
+      employmentStatus: '',
+      creditScore: 0
+    };
   };
 
   const getStatusIcon = (status: string) => {
@@ -150,6 +140,20 @@ export const MyLoanRequests = ({ onCreateNew }: MyLoanRequestsProps) => {
         variant: "destructive",
       });
     }
+  };
+
+  const handleViewRequest = (request: MyLoanRequest) => {
+    toast({
+      title: "Loan Request Details",
+      description: `Amount: ${formatCurrency(request.amount)} | Purpose: ${formatPurpose(request.purpose)} | Duration: ${request.duration_months} months | Interest: ${request.interest_rate}%`,
+    });
+  };
+
+  const handleEditRequest = (request: MyLoanRequest) => {
+    toast({
+      title: "Edit Request",
+      description: "Edit functionality coming soon! For now, you can delete and create a new request.",
+    });
   };
 
   if (loading) {
@@ -217,26 +221,25 @@ export const MyLoanRequests = ({ onCreateNew }: MyLoanRequestsProps) => {
             </CardHeader>
 
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                {/* Financial Info */}
-                {conditions.monthly_income && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">                {/* Financial Info */}
+                {conditions.monthlyIncome > 0 && (
                   <div>
                     <span className="text-gray-600">Monthly Income:</span>
-                    <span className="ml-2 font-medium">{formatCurrency(conditions.monthly_income)}</span>
+                    <span className="ml-2 font-medium">{formatCurrency(conditions.monthlyIncome)}</span>
                   </div>
                 )}
                 
-                {conditions.employment_status && (
+                {conditions.employmentStatus && (
                   <div>
                     <span className="text-gray-600">Employment:</span>
-                    <span className="ml-2 font-medium capitalize">{conditions.employment_status.replace('_', ' ')}</span>
+                    <span className="ml-2 font-medium capitalize">{conditions.employmentStatus.replace('_', ' ')}</span>
                   </div>
                 )}
                 
-                {conditions.credit_score && (
+                {conditions.creditScore > 0 && (
                   <div>
                     <span className="text-gray-600">Credit Score:</span>
-                    <span className="ml-2 font-medium">{conditions.credit_score}</span>
+                    <span className="ml-2 font-medium">{conditions.creditScore}</span>
                   </div>
                 )}
                 
@@ -260,14 +263,22 @@ export const MyLoanRequests = ({ onCreateNew }: MyLoanRequestsProps) => {
                 </div>
                 
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleViewRequest(request)}
+                  >
                     <Eye className="mr-1 h-3 w-3" />
                     View
                   </Button>
                   
                   {request.status === 'pending' && (
                     <>
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleEditRequest(request)}
+                      >
                         <Edit className="mr-1 h-3 w-3" />
                         Edit
                       </Button>

@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,7 +21,8 @@ import {
   UserPlus, 
   Calculator, 
   FileText, 
-  Send 
+  Send,
+  Wand2
 } from "lucide-react";
 
 interface CreateLoanModalProps {
@@ -59,6 +61,24 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
     setPaymentDetails({});
     setPaymentMethod('upi');
     setSmartContract(false);
+  };  const handleAutofill = () => {
+    setBorrowerEmail('test.borrower@example.com');
+    setBorrowerName('Test Borrower');
+    setAmount('10000');
+    setDuration('6');
+    setInterestRate('3.5');
+    setPurpose('education');
+    setConditions('Quick repayment expected. Flexible terms for family member.');
+    setPaymentMethod('upi');
+    setPaymentDetails({
+      upiId: 'success@razorpay',
+      isValid: true
+    });
+    
+    toast({
+      title: "Form Autofilled",
+      description: "Sample loan offer data has been filled in. You can modify as needed.",
+    });
   };
 
   const calculateTotalReturn = () => {
@@ -72,7 +92,19 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
     }
     return principal;
   };  const handleCreateLoan = async () => {
+    console.log('Create loan button clicked');
+    console.log('Form state:', {
+      user: !!user,
+      amount,
+      duration,
+      borrowerEmail,
+      borrowerName,
+      paymentMethod,
+      paymentDetails
+    });
+
     if (!user) {
+      console.log('No user found');
       toast({
         title: "Authentication Required",
         description: "Please log in to create a loan agreement.",
@@ -82,16 +114,15 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
     }
 
     if (!amount || !duration || !borrowerEmail || !borrowerName) {
+      console.log('Missing required fields');
       toast({
         title: "Missing Information",
         description: "Please fill in all required fields.",
         variant: "destructive",
       });
       return;
-    }
-
-    // Enhanced payment method validation
-    if (!paymentDetails.isValid) {
+    }// Enhanced payment method validation (temporarily relaxed for testing)
+    if (!paymentDetails.isValid && paymentMethod !== 'cash') {
       let errorMessage = "Please provide valid payment details for your selected method.";
       
       switch (paymentMethod) {
@@ -107,11 +138,9 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
         case 'crypto':
           errorMessage = "Please provide a valid cryptocurrency wallet address";
           break;
-        case 'cash':
-          errorMessage = "Please provide cash transaction details or meeting location";
-          break;
       }
       
+      console.log('Payment validation failed:', { paymentMethod, paymentDetails });
       toast({
         title: "Payment Details Required",
         description: errorMessage,
@@ -131,44 +160,77 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
       return;
     }
 
-    setLoading(true);
+    setLoading(true);    try {      console.log('Creating loan offer with data:', {
+        lender_id: user.id,
+        lender_name: user.name || user.email || 'Unknown Lender',
+        lender_email: user.email || '',
+        borrower_email: borrowerEmail,
+        borrower_name: borrowerName,
+        amount: parseCurrency(amount),
+        interest_rate: parseFloat(interestRate),
+        duration_months: parseInt(duration),
+        purpose,
+        conditions,
+        payment_method: paymentMethod,
+        status: 'pending'
+      });
 
-    try {
-      // Create loan proposal (not agreement yet - needs borrower acceptance)
+      // Create loan offer (lender offering to borrower)
       const { data: proposal, error } = await supabase
         .from('loan_agreements')
         .insert({
           lender_id: user.id,
+          lender_name: user.name || user.email || 'Unknown Lender',
+          lender_email: user.email || '',
+          borrower_id: null, // Will be set when borrower accepts
           borrower_email: borrowerEmail,
           borrower_name: borrowerName,
           amount: parseCurrency(amount),
           interest_rate: parseFloat(interestRate),
           duration_months: parseInt(duration),
-          purpose,
-          conditions,
+          purpose: purpose || 'other', // Ensure purpose is not empty
+          conditions: conditions || '', // Ensure conditions is not null
           payment_method: paymentMethod,
-          payment_details: paymentDetails,
           smart_contract: smartContract,
-          status: 'proposed', // Changed from 'pending' to 'proposed'
-          lender_signature: new Date().toISOString(), // Lender signs when creating
-          borrower_signature: null, // Waiting for borrower signature
-          contract_address: null, // No contract until both parties sign
-          pdf_generated: false // No PDF until both parties sign
+          status: 'pending',
+          data: {
+            paymentDetails: paymentDetails,
+            lenderSignedAt: new Date().toISOString(),
+            type: 'loan_offer'
+          }
         })
-        .select()        .single();
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database error:', error);
+        throw error;
+      }
 
-      // Send notification to borrower via email/SMS
-      await supabase.from('notifications').insert({
-        user_id: null, // For non-registered users
-        email: borrowerEmail,
-        type: 'loan_proposal',
-        title: 'New Loan Offer',
-        message: `${user.name} has offered you a loan of ${formatCurrency(parseCurrency(amount))} at ${interestRate}% interest for ${duration} months.`,
-        agreement_id: proposal.id,
-        read: false
-      });
+      console.log('Loan offer created successfully:', proposal);// Send notification (will be handled via email for now)
+      // TODO: Implement proper notification system after schema is updated
+      try {
+        await supabase.from('notifications').insert({
+          user_id: null, // For non-registered users, will be updated when they register
+          title: 'New Loan Offer',
+          message: `${user.name || 'A lender'} has offered you a loan of ${formatCurrency(parseCurrency(amount))} at ${interestRate}% interest for ${duration} months.`,
+          type: 'loan_request',
+          related_agreement_id: proposal.id,
+          read: false,
+          data: {
+            borrower_email: borrowerEmail,
+            offer_details: {
+              amount: parseCurrency(amount),
+              interest_rate: parseFloat(interestRate),
+              duration: parseInt(duration),
+              purpose
+            }
+          }
+        });
+      } catch (notificationError) {
+        console.warn('Notification creation failed:', notificationError);
+        // Don't fail the entire process if notification fails
+      }
 
       setCreatedAgreementId(proposal.id);
 
@@ -202,12 +264,22 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold flex items-center">
-              <DollarSign className="mr-2 h-6 w-6 text-green-600" />
-              Create Loan Agreement
-            </DialogTitle>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">          <DialogHeader>
+            <div className="flex justify-between items-center">
+              <DialogTitle className="text-2xl font-bold flex items-center">
+                <DollarSign className="mr-2 h-6 w-6 text-green-600" />
+                Create Loan Agreement
+              </DialogTitle>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleAutofill}
+                className="flex items-center gap-1"
+              >
+                <Wand2 className="h-3 w-3" />
+                Autofill
+              </Button>
+            </div>
           </DialogHeader>
           
           <div className="space-y-6">
@@ -334,15 +406,23 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
                     />
                   </div>
                 </div>
-                
-                <div>
+                  <div>
                   <Label htmlFor="purpose">Purpose of Loan</Label>
-                  <Input
-                    id="purpose"
-                    value={purpose}
-                    onChange={(e) => setPurpose(e.target.value)}
-                    placeholder="Business expansion, emergency, etc."
-                  />
+                  <Select value={purpose} onValueChange={setPurpose}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select loan purpose" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="business">Business</SelectItem>
+                      <SelectItem value="education">Education</SelectItem>
+                      <SelectItem value="medical">Medical</SelectItem>
+                      <SelectItem value="home_improvement">Home Improvement</SelectItem>
+                      <SelectItem value="debt_consolidation">Debt Consolidation</SelectItem>
+                      <SelectItem value="wedding">Wedding</SelectItem>
+                      <SelectItem value="travel">Travel</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 
                 <div>
@@ -401,6 +481,7 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
               onPaymentDetails={setPaymentDetails}
               smartContract={smartContract}
               onSmartContractChange={setSmartContract}
+              initialPaymentDetails={paymentDetails}
             />
 
             {/* Action Buttons */}
