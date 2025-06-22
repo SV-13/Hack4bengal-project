@@ -6,6 +6,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from "@/utils/currency";
+import { getAvailableLoanRequests } from "@/utils/supabaseRPC";
+import { LoanAcceptanceModal } from "./LoanAcceptanceModal";
 import { 
   DollarSign, 
   Clock, 
@@ -42,6 +44,8 @@ export const BrowseLoanRequests = ({ onOfferLoan }: BrowseLoanRequestsProps) => 
   const [requests, setRequests] = useState<LoanRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
+  const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);
+  const [acceptanceModalOpen, setAcceptanceModalOpen] = useState(false);
 
   // Helper function to parse conditions JSON
   const parseConditions = (conditions: string) => {
@@ -58,19 +62,28 @@ export const BrowseLoanRequests = ({ onOfferLoan }: BrowseLoanRequestsProps) => 
     try {
       setLoading(true);
       
-      // Get loan requests from loan_agreements table where no lender is assigned
-      const { data: requestData, error: requestError } = await supabase
-        .from('loan_agreements')
-        .select('*')
-        .eq('status', 'pending')
-        .is('lender_id', null) // Only requests without lenders
-        .neq('borrower_id', user?.id || '') // Don't show user's own requests
-        .order('created_at', { ascending: false });
+      // Try using the new RPC function first, with fallback to direct query
+      let requestData;
+      try {
+        requestData = await getAvailableLoanRequests();
+      } catch (rpcError) {
+        console.warn('RPC function not available, falling back to direct query:', rpcError);
+        
+        // Fallback to direct database query
+        const { data, error } = await supabase
+          .from('loan_agreements')
+          .select('*')
+          .eq('status', 'pending')
+          .is('lender_id', null) // Only requests without lenders
+          .neq('borrower_id', user?.id || '') // Don't show user's own requests
+          .order('created_at', { ascending: false });
 
-      if (requestError) throw requestError;
+        if (error) throw error;
+        requestData = data || [];
+      }
 
       // Filter only loan requests (not regular agreements) and transform data
-      const transformedData = (requestData || [])
+      const transformedData = requestData
         .filter(item => {
           try {
             const conditions = JSON.parse(item.conditions || '{}');
@@ -128,12 +141,43 @@ export const BrowseLoanRequests = ({ onOfferLoan }: BrowseLoanRequestsProps) => 
       other: 'bg-gray-100 text-gray-800'
     };
     return colors[purpose] || colors.other;
-  };
-  const formatPurpose = (purpose: string) => {
+  };  const formatPurpose = (purpose: string) => {
     return purpose.split('_').map(word => 
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
   };
+
+  const handleOfferLoan = (request: LoanRequest) => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to offer a loan.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setSelectedRequest(request);
+    setAcceptanceModalOpen(true);
+  };
+
+  const handleAcceptanceSuccess = () => {
+    // Refresh the requests list
+    fetchLoanRequests();
+    setAcceptanceModalOpen(false);
+    setSelectedRequest(null);
+    
+    toast({
+      title: "Loan Request Accepted",
+      description: "You have successfully accepted this loan request. The borrower will be notified.",
+    });
+  };
+
+  const handleAcceptanceCancel = () => {
+    setAcceptanceModalOpen(false);
+    setSelectedRequest(null);
+  };
+
   const filteredRequests = requests.filter(request => {
     // Parse conditions to check if it's a loan request
     try {
@@ -289,20 +333,30 @@ export const BrowseLoanRequests = ({ onOfferLoan }: BrowseLoanRequestsProps) => 
                     <Calendar className="mr-1 h-3 w-3" />
                     Recent request
                   </div>
-                  
-                  <Button
+                    <Button
                     size="sm"
-                    onClick={() => onOfferLoan?.(request)}
+                    onClick={() => handleOfferLoan(request)}
                     className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
                   >
-                    Make Offer
+                    Lend Money
                   </Button>
                 </div>
               </CardContent>
             </Card>
             );
-          })}
-        </div>
+          })}        </div>
+      )}
+
+      {/* Loan Acceptance Modal */}
+      {selectedRequest && (
+        <LoanAcceptanceModal
+          open={acceptanceModalOpen}
+          onOpenChange={setAcceptanceModalOpen}
+          agreementId={selectedRequest.id}
+          agreement={selectedRequest}
+          onAccepted={handleAcceptanceSuccess}
+          onRejected={handleAcceptanceCancel}
+        />
       )}
     </div>
   );
