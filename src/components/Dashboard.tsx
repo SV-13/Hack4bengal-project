@@ -83,52 +83,11 @@ const Dashboard = () => {  const { user, logout } = useAuth();
   });
   const [pendingRequests, setPendingRequests] = useState<LoanRequest[]>([]);
   const [agreements, setAgreements] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
+  const [loading, setLoading] = useState(true);  useEffect(() => {
     if (user) {
       fetchDashboardData();
-    } else {
-      // Test database connection even without user
-      testDatabaseConnection();
     }
   }, [user]);
-
-  // Test database connection for debugging
-  const testDatabaseConnection = async () => {
-    setLoading(true);
-    try {
-      console.log('Testing database connection...');
-      const { data, error } = await supabase
-        .from('loan_agreements')
-        .select('count')
-        .limit(1);
-      
-      if (error) {
-        console.error('Database connection test failed:', error);
-        toast({
-          title: "Database Error",
-          description: `Connection failed: ${error.message}`,
-          variant: "destructive",
-        });
-      } else {
-        console.log('Database connection test passed:', data);
-        toast({
-          title: "Database Connected",
-          description: "Database is accessible. Please log in to view your data.",
-          variant: "default",
-        });
-      }
-    } catch (error) {
-      console.error('Database test error:', error);
-      toast({
-        title: "Database Error",
-        description: "Failed to connect to database",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchDashboardData = async () => {
     if (!user) return;

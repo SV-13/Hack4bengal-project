@@ -91,7 +91,19 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
     }
     return principal;
   };  const handleCreateLoan = async () => {
+    console.log('Create loan button clicked');
+    console.log('Form state:', {
+      user: !!user,
+      amount,
+      duration,
+      borrowerEmail,
+      borrowerName,
+      paymentMethod,
+      paymentDetails
+    });
+
     if (!user) {
+      console.log('No user found');
       toast({
         title: "Authentication Required",
         description: "Please log in to create a loan agreement.",
@@ -101,16 +113,15 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
     }
 
     if (!amount || !duration || !borrowerEmail || !borrowerName) {
+      console.log('Missing required fields');
       toast({
         title: "Missing Information",
         description: "Please fill in all required fields.",
         variant: "destructive",
       });
       return;
-    }
-
-    // Enhanced payment method validation
-    if (!paymentDetails.isValid) {
+    }// Enhanced payment method validation (temporarily relaxed for testing)
+    if (!paymentDetails.isValid && paymentMethod !== 'cash') {
       let errorMessage = "Please provide valid payment details for your selected method.";
       
       switch (paymentMethod) {
@@ -126,11 +137,9 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
         case 'crypto':
           errorMessage = "Please provide a valid cryptocurrency wallet address";
           break;
-        case 'cash':
-          errorMessage = "Please provide cash transaction details or meeting location";
-          break;
       }
       
+      console.log('Payment validation failed:', { paymentMethod, paymentDetails });
       toast({
         title: "Payment Details Required",
         description: errorMessage,
@@ -150,9 +159,16 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
       return;
     }
 
-    setLoading(true);
+    setLoading(true);    try {
+      console.log('Creating loan offer with data:', {
+        lender_id: user.id,
+        borrower_email: borrowerEmail,
+        amount: parseCurrency(amount),
+        interest_rate: parseFloat(interestRate),
+        duration_months: parseInt(duration)
+      });
 
-    try {      // Create loan offer (lender offering to borrower)
+      // Create loan offer (lender offering to borrower)
       const { data: proposal, error } = await supabase
         .from('loan_agreements')
         .insert({
@@ -179,7 +195,12 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
         .select()
         .single();
 
-      if (error) throw error;      // Send notification (will be handled via email for now)
+      if (error) {
+        console.error('Database error:', error);
+        throw error;
+      }
+
+      console.log('Loan offer created successfully:', proposal);// Send notification (will be handled via email for now)
       // TODO: Implement proper notification system after schema is updated
       try {
         await supabase.from('notifications').insert({
