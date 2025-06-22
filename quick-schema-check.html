@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Database Schema Check</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+    <h1>Database Schema Check</h1>
+    <div id="results"></div>
+    
+    <script>
+        const supabase = window.supabase.createClient(
+            'https://tbhcyajaukyocniuugif.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRiaGN5YWphdWt5b2NuaXV1Z2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAxODY4MzMsImV4cCI6MjA2NTc2MjgzM30.AXvo1YPw_YR0q_RRCatbLbZqM_g1gnrGPy1q2qKHrMw'
+        );
+        
+        async function checkSchema() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<h2>Testing database access...</h2>';
+            
+            const tables = ['loan_agreements', 'notifications', 'users'];
+            const tableResults = [];
+            
+            for (const table of tables) {
+                try {
+                    const { data, error } = await supabase
+                        .from(table)
+                        .select('*')
+                        .limit(1);
+                    
+                    if (error) {
+                        tableResults.push(`❌ ${table}: ${error.message}`);
+                    } else {
+                        tableResults.push(`✅ ${table}: accessible`);
+                    }
+                } catch (e) {
+                    tableResults.push(`❌ ${table}: ${e.message}`);
+                }
+            }
+            
+            results.innerHTML = `
+                <h2>Database Table Check Results:</h2>
+                <ul>
+                    ${tableResults.map(result => `<li>${result}</li>`).join('')}
+                </ul>
+                <h3>Next Steps:</h3>
+                <p>If you see errors above, you need to run the SQL schema script:</p>
+                <ol>
+                    <li>Go to <a href="https://supabase.com/dashboard/project/tbhcyajaukyocniuugif" target="_blank">Your Supabase Dashboard</a></li>
+                    <li>Click "SQL Editor"</li>
+                    <li>Copy and paste the entire SUPABASE_SCHEMA_FIX.sql content</li>
+                    <li>Click "Run"</li>
+                    <li>Refresh your app</li>
+                </ol>
+            `;
+        }
+        
+        checkSchema();
+    </script>
+</body>
+</html>

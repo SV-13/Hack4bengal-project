@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 
+// Import emergency diagnostics for browser console access
+import './utils/emergencyTest'
+
 console.log('Starting application...');
 
 // Add CSP error listener
