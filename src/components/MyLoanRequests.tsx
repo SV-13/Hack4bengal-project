@@ -142,6 +142,20 @@ export const MyLoanRequests = ({ onCreateNew }: MyLoanRequestsProps) => {
     }
   };
 
+  const handleViewRequest = (request: MyLoanRequest) => {
+    toast({
+      title: "Loan Request Details",
+      description: `Amount: ${formatCurrency(request.amount)} | Purpose: ${formatPurpose(request.purpose)} | Duration: ${request.duration_months} months | Interest: ${request.interest_rate}%`,
+    });
+  };
+
+  const handleEditRequest = (request: MyLoanRequest) => {
+    toast({
+      title: "Edit Request",
+      description: "Edit functionality coming soon! For now, you can delete and create a new request.",
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -249,14 +263,22 @@ export const MyLoanRequests = ({ onCreateNew }: MyLoanRequestsProps) => {
                 </div>
                 
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleViewRequest(request)}
+                  >
                     <Eye className="mr-1 h-3 w-3" />
                     View
                   </Button>
                   
                   {request.status === 'pending' && (
                     <>
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleEditRequest(request)}
+                      >
                         <Edit className="mr-1 h-3 w-3" />
                         Edit
                       </Button>

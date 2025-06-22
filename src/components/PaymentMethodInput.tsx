@@ -47,7 +47,6 @@ export const PaymentMethodInput = ({
   const [accountNumber, setAccountNumber] = useState('');
   const [ifsc, setIfsc] = useState('');
   const [walletAddress, setWalletAddress] = useState('');
-
   useEffect(() => {
     if (initialPaymentDetails) {
       setUpiId(initialPaymentDetails.upiId || '');
@@ -56,6 +55,11 @@ export const PaymentMethodInput = ({
       setWalletAddress(initialPaymentDetails.walletAddress || '');
     }
   }, [initialPaymentDetails]);
+
+  // Trigger validation when form values change
+  useEffect(() => {
+    validateAndUpdateDetails(selectedMethod);
+  }, [upiId, accountNumber, ifsc, walletAddress, selectedMethod]);
 
   const handleAutofill = () => {
     switch (selectedMethod) {
@@ -73,9 +77,6 @@ export const PaymentMethodInput = ({
         setWalletAddress('0x742d35Cc6634C0532925a3b844Bc454e4438f44e');
         break;
     }
-    
-    // Trigger validation update after setting values
-    setTimeout(() => validateAndUpdateDetails(selectedMethod), 100);
   };
 
   const validateAndUpdateDetails = (method: PaymentMethodType) => {
