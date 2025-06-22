@@ -8,9 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from '@/integrations/supabase/client';
-import { DollarSign, Clock, FileText, User, Wand2 } from "lucide-react";
-import { notifyLoanRequestCreated } from "@/utils/emailNotifications";
-import { requestLoan } from "@/utils/supabaseRPC";
+import { DollarSign, Clock, Wand2 } from "lucide-react";
+import { formatCurrency } from "@/utils/currency";
 
 interface RequestLoanModalProps {
   open: boolean;
@@ -27,17 +26,24 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
     duration: '',
     interestRate: '',
     description: ''
-  });  const handleSubmit = async (e: React.FormEvent) => {
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to create a loan request.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
 
     try {
-      setLoading(true);
-      console.log('Starting loan request submission...', { user: user.id, formData });
-
       // Validate required fields
       if (!formData.amount || !formData.purpose || !formData.duration) {
-        console.log('Validation failed - missing required fields');
         toast({
           title: "Missing Information",
           description: "Please fill in all required fields.",
@@ -46,91 +52,73 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
         return;
       }
 
-      console.log('Validation passed, proceeding with database insertion...');let requestId: string | null = null;
-
-      // Skip RPC for now and use direct insertion (more reliable)
-      console.log('Using direct database insertion for loan request...');
-        // Direct database insertion into loan_agreements
-      // Create a loan request by inserting with lender_id = null to indicate it's a request
-      try {
-        console.log('Attempting database insertion with data:', {
-          borrower_id: user.id,
-          borrower_name: user.name || 'Unknown',
-          borrower_email: user.email || '',
-          amount: parseFloat(formData.amount),
-          purpose: formData.purpose,
-          duration_months: parseInt(formData.duration),
-          interest_rate: parseFloat(formData.interestRate) || 0,
+      // Validate amount is a positive number
+      const amount = parseFloat(formData.amount);
+      if (isNaN(amount) || amount <= 0) {
+        toast({
+          title: "Invalid Amount",
+          description: "Please enter a valid loan amount.",
+          variant: "destructive",
         });
+        return;
+      }
 
-        const { data, error } = await supabase
-          .from('loan_agreements')
-          .insert({
-            borrower_id: user.id,
-            borrower_name: user.name || 'Unknown',
-            borrower_email: user.email || '',
-            lender_id: null, // This indicates it's a loan request, not an agreement yet
-            amount: parseFloat(formData.amount),
-            purpose: formData.purpose,
-            duration_months: parseInt(formData.duration),
-            interest_rate: parseFloat(formData.interestRate) || 0,
-            conditions: formData.description || null,
-            status: 'pending',
-            payment_method: 'upi', // Default payment method
-            smart_contract: false,
-            created_at: new Date().toISOString()
-            // Note: lender_name and lender_email will be null for requests
-          })
-          .select();
+      // Validate duration is a positive integer
+      const duration = parseInt(formData.duration);
+      if (isNaN(duration) || duration <= 0) {
+        toast({
+          title: "Invalid Duration",
+          description: "Please enter a valid duration in months.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-        console.log('Database insertion result:', { data, error });
+      // Parse interest rate (optional)
+      const interestRate = formData.interestRate ? parseFloat(formData.interestRate) : 0;
 
-        if (error) {
-          console.error('Database insertion error:', error);
-          throw new Error(`Database error: ${error.message}`);
-        }
+      // Create loan request - explicitly include lender_id as null
+      const insertData = {
+        borrower_id: user.id,
+        borrower_name: user.name || user.email || 'Unknown User',
+        borrower_email: user.email || '',
+        lender_id: null as string | null, // Explicitly cast to allow null
+        amount: amount,
+        purpose: formData.purpose,
+        duration_months: duration,
+        interest_rate: interestRate,
+        conditions: formData.description || '',
+        status: 'pending' as const
+      };
 
-        if (!data || data.length === 0) {
-          throw new Error('No data returned from database insertion');
-        }
+      const { data, error } = await supabase
+        .from('loan_agreements')
+        .insert(insertData)
+        .select()
+        .single();
 
-        requestId = data[0].id;
-        console.log('Successfully created loan request with ID:', requestId);
+      if (error) {
+        console.error('Database error:', error);
         
-      } catch (dbError) {
-        console.error('Direct database insertion failed:', dbError);
-        throw new Error(`Failed to create loan request: ${dbError.message}`);
+        // If the error is about lender_id constraint, provide specific guidance
+        if (error.message.includes('lender_id') || error.message.includes('not-null')) {
+          throw new Error('Database configuration issue: lender_id constraint needs to be updated. Please check the setup guide.');
+        }
+        
+        throw new Error(`Failed to create loan request: ${error.message}`);
       }
 
-      if (!requestId) {
-        throw new Error('Failed to create loan request - no ID returned');
-      }      // Send email notification (if configured)
-      try {
-        console.log('Attempting to send email notification...');
-        await notifyLoanRequestCreated({
-          borrowerName: user.name || 'Unknown',
-          borrowerEmail: user.email || '',
-          amount: parseFloat(formData.amount),
-          purpose: formData.purpose,
-          duration: parseInt(formData.duration),
-          interestRate: parseFloat(formData.interestRate) || undefined,
-          requestId: requestId,
-          recipients: [] // For now, no specific recipients - could be enhanced later
-        });
-        console.log('Email notification sent successfully');
-      } catch (emailError) {
-        console.warn('Email notification failed:', emailError);
-        // Don't fail the entire request if email fails
+      if (!data) {
+        throw new Error('No data returned from database');
       }
 
-      console.log('Loan request creation completed successfully');
-
+      // Success
       toast({
-        title: "Loan Request Submitted",
-        description: "Your loan request has been posted. Friends and family will be able to see and respond to it.",
+        title: "Loan Request Created! 🎉",
+        description: `Your loan request for ${formatCurrency(amount)} has been created successfully.`,
       });
 
-      // Reset form
+      // Reset form and close modal
       setFormData({
         amount: '',
         purpose: '',
@@ -140,11 +128,12 @@ export const RequestLoanModal = ({ open, onOpenChange }: RequestLoanModalProps) 
       });
 
       onOpenChange(false);
+
     } catch (error: any) {
-      console.error('Error submitting loan request:', error);
+      console.error('Error creating loan request:', error);
       toast({
-        title: "Submission Failed",
-        description: error.message || "Failed to submit loan request. Please try again.",
+        title: "Creation Failed",
+        description: error.message || "Failed to create loan request. Please try again.",
         variant: "destructive",
       });
     } finally {
