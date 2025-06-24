@@ -12,7 +12,10 @@
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
+    "@helia/strings": "^4.0.6",
+    "@helia/unixfs": "^5.0.3",
     "@hookform/resolvers": "^3.9.0",
+    "@pinata/sdk": "^2.1.0",
     "@radix-ui/react-accordion": "^1.2.0",
     "@radix-ui/react-alert-dialog": "^1.1.1",
     "@radix-ui/react-aspect-ratio": "^1.1.0",
@@ -54,10 +57,13 @@
     "ethers": "^6.14.4",
     "framer-motion": "^12.18.1",
     "gsap": "^3.13.0",
+    "helia": "^5.4.2",
     "html2canvas": "^1.4.1",
     "input-otp": "^1.2.4",
+    "ipfs-http-client": "^60.0.1",
     "jspdf": "^3.0.1",
     "lucide-react": "^0.462.0",
+    "multiformats": "^13.3.7",
     "next-themes": "^0.3.0",
     "paytmchecksum": "^1.5.1",
     "razorpay": "^2.9.6",
@@ -74,6 +80,7 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.3",
+    "web3.storage": "^4.5.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {

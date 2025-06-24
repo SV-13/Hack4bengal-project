@@ -6,6 +6,8 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { useWeb3 } from "@/contexts/Web3Context";
+import { TrustScoreDisplay } from "@/components/TrustScoreDisplay";
+import { useTrustScore } from "@/hooks/useTrustScore";
 import CreateLoanModal from "@/components/CreateLoanModal";
 import { LoanRequestModal } from "@/components/LoanRequestModal";
 import { RequestLoanModal } from "@/components/RequestLoanModal";
@@ -34,6 +36,8 @@ import {
   Activity,
   Wallet
 } from "lucide-react";
+import { TrustScoreDisplay } from "@/components/TrustScoreDisplay";
+import { useTrustScore } from "@/hooks/useTrustScore";
 
 interface LoanRequest {
   id: string;
@@ -62,13 +66,16 @@ const Dashboard = () => {  const { user, logout } = useAuth();
     loading: web3Loading 
   } = web3Context;
   
+  // Trust score hook
+  const { trustScore, tier, loading: trustScoreLoading } = useTrustScore();
+  
   // Memoize wallet display values to prevent unnecessary re-renders
   const walletDisplayValues = useMemo(() => ({
     isConnected,
     account: account ? `${account.slice(0, 6)}...${account.slice(-4)}` : null,
     balance: balance ? `${parseFloat(balance).toFixed(4)} ETH` : '0.0000 ETH',
     networkName: networkName || 'Unknown Network'
-  }), [isConnected, account, balance, networkName]);  const { toast } = useToast();  const [showCreateLoan, setShowCreateLoan] = useState(false);
+  }), [isConnected, account, balance, networkName]);  const { toast } = useToast();const [showCreateLoan, setShowCreateLoan] = useState(false);
   const [showRequestLoan, setShowRequestLoan] = useState(false);
   const [showLoanRequest, setShowLoanRequest] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);const [stats, setStats] = useState<DashboardStats>({
@@ -101,22 +108,20 @@ const Dashboard = () => {  const { user, logout } = useAuth();
       let totalBorrowed = 0;
       let activeLoans = 0;
       let completedLoans = 0;
-      const requests: LoanRequest[] = [];
-
-      agreements?.forEach(agreement => {
+      const requests: LoanRequest[] = [];      agreements?.forEach(agreement => {
         // Convert string amount to number for calculations
         const amount = parseFloat(agreement.amount.toString());
         
         if (agreement.lender_id === user.id) {
           // User is the lender
           totalLent += amount;
-          if (agreement.status === 'active') activeLoans++;
-          if (agreement.status === 'completed') completedLoans++;
+          if (agreement.status === 'active' || agreement.status === 'funded') activeLoans++;
+          if (agreement.status === 'completed' || agreement.status === 'repaid') completedLoans++;
         } else if (agreement.borrower_id === user.id) {
           // User is the borrower
           totalBorrowed += amount;
-          if (agreement.status === 'active') activeLoans++;
-          if (agreement.status === 'completed') completedLoans++;
+          if (agreement.status === 'active' || agreement.status === 'funded') activeLoans++;
+          if (agreement.status === 'completed' || agreement.status === 'repaid') completedLoans++;
         }
 
         // Add pending requests where user is lender
@@ -129,7 +134,7 @@ const Dashboard = () => {  const { user, logout } = useAuth();
             requestDate: agreement.created_at
           });
         }
-      });      setStats({ totalLent, totalBorrowed, activeLoans, completedLoans });
+      });setStats({ totalLent, totalBorrowed, activeLoans, completedLoans });
       setPendingRequests(requests);
       setAgreements(agreements || []);
 
@@ -253,8 +258,7 @@ const Dashboard = () => {  const { user, logout } = useAuth();
             >
               <DollarSign className="mr-2 h-4 w-4" />
               Request Loan            </Button>
-            
-            {/* Wallet Connection Button */}
+              {/* Wallet Connection Button */}
             {!isConnected ? (
               <Button 
                 onClick={connectWallet}
@@ -264,26 +268,17 @@ const Dashboard = () => {  const { user, logout } = useAuth();
               >
                 <Wallet className="mr-2 h-4 w-4" />
                 {web3Loading ? 'Connecting...' : 'Connect Wallet'}
-              </Button>            ) : (
-              <div className="flex gap-2">
-                <Button 
-                  onClick={() => setShowCreateLoan(true)}
-                  variant="outline"
-                  className="border-green-300 text-green-600 hover:bg-green-50"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Crypto Loan
-                </Button>
-                <Button 
-                  onClick={disconnectWallet}
-                  variant="outline"
-                  size="sm"
-                  className="border-green-300 text-green-600 hover:bg-green-50"
-                >
-                  <Wallet className="mr-2 h-4 w-4" />
-                  {account?.slice(0, 6)}...{account?.slice(-4)}
-                </Button>
-              </div>
+              </Button>
+            ) : (
+              <Button 
+                onClick={disconnectWallet}
+                variant="outline"
+                size="sm"
+                className="border-green-300 text-green-600 hover:bg-green-50"
+              >
+                <Wallet className="mr-2 h-4 w-4" />
+                {account?.slice(0, 6)}...{account?.slice(-4)}
+              </Button>
             )}
               <Button 
               variant="outline"
@@ -410,28 +405,30 @@ const Dashboard = () => {  const { user, logout } = useAuth();
             </CardContent>
           </Card>          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Wallet Status</CardTitle>
-              <Wallet className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
+              <CardTitle className="text-sm font-medium">Trust Score</CardTitle>
+              <Star className="h-4 w-4 text-muted-foreground" />            </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {isConnected ? (
-                  <span className="text-green-600">Connected</span>
-                ) : (
-                  <span className="text-gray-500">Disconnected</span>
-                )}
-              </div>
+              {trustScoreLoading ? (
+                <div className="text-2xl font-bold text-gray-400">Loading...</div>
+              ) : trustScore ? (
+                <TrustScoreDisplay 
+                  score={trustScore.overall_score}
+                  tier={trustScore.score_tier}
+                  size="small"
+                  showDetails={true}
+                />
+              ) : (
+                <div className="text-2xl font-bold text-gray-400">--</div>
+              )}
               <p className="text-xs text-muted-foreground">
-                {isConnected 
-                  ? `${networkName} • ${balance?.slice(0, 6)} ETH`
-                  : 'Connect for crypto loans'
-                }
+                {tier ? `${tier.name} tier benefits` : 'Build your reputation'}
               </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Main Content with Tabs */}        <Tabs defaultValue="overview" className="space-y-6">          <TabsList className="grid w-full grid-cols-8">
+        {/* Main Content with Tabs */}
+        <Tabs defaultValue="overview" className="space-y-6"><TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="management">Manage</TabsTrigger>
             <TabsTrigger value="browse">Browse</TabsTrigger>
@@ -481,9 +478,7 @@ const Dashboard = () => {  const { user, logout } = useAuth();
                     </div>
                   </CardContent>
                 </Card>
-              </div>
-
-              {/* Right Column - Recent Activity */}
+              </div>              {/* Right Column - Recent Activity */}
               <div className="lg:col-span-2">
                 <Card>
                   <CardHeader>
@@ -491,10 +486,52 @@ const Dashboard = () => {  const { user, logout } = useAuth();
                     <CardDescription>Your latest lending and borrowing activities</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-gray-500">View your agreements tab for detailed information.</p>
+                    {agreements.length > 0 ? (
+                      <div className="space-y-3">
+                        {agreements
+                          .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+                          .slice(0, 5)
+                          .map((agreement) => (
+                            <div key={agreement.id} className="flex items-center justify-between p-3 border rounded-lg">
+                              <div className="flex items-center space-x-3">
+                                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                <div>
+                                  <p className="text-sm font-medium">
+                                    {agreement.lender_id === user?.id 
+                                      ? `Loan to ${agreement.borrower_name}`
+                                      : `Loan from ${agreement.lender_name}`}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    {formatCurrency(agreement.amount)} • {agreement.status}
+                                  </p>
+                                </div>
+                              </div>
+                              <Badge variant={
+                                agreement.status === 'pending' ? 'outline' :
+                                agreement.status === 'accepted' ? 'default' :
+                                agreement.status === 'funded' ? 'default' :
+                                agreement.status === 'completed' ? 'default' : 'outline'
+                              }>
+                                {agreement.status}
+                              </Badge>
+                            </div>
+                          ))}
+                        {agreements.length > 5 && (
+                          <p className="text-xs text-gray-500 text-center pt-2">
+                            View all agreements in the "Agreements" tab
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <FileText className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-500">No loan activity yet</p>
+                        <p className="text-xs text-gray-400">Create your first loan to get started</p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
-              </div>            </div>
+              </div></div>
           </TabsContent>          <TabsContent value="management">
             <LoanManagementDashboard />
           </TabsContent>

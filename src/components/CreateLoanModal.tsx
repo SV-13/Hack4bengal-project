@@ -21,8 +21,7 @@ import {
   UserPlus, 
   Calculator, 
   FileText, 
-  Send,
-  Wand2
+  Send
 } from "lucide-react";
 
 interface CreateLoanModalProps {
@@ -49,7 +48,6 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
   const [loading, setLoading] = useState(false);
   const [showInvitation, setShowInvitation] = useState(false);
   const [createdAgreementId, setCreatedAgreementId] = useState<string>('');
-
   const resetForm = () => {
     setBorrowerEmail('');
     setBorrowerName('');
@@ -61,24 +59,6 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
     setPaymentDetails({});
     setPaymentMethod('upi');
     setSmartContract(false);
-  };  const handleAutofill = () => {
-    setBorrowerEmail('test.borrower@example.com');
-    setBorrowerName('Test Borrower');
-    setAmount('10000');
-    setDuration('6');
-    setInterestRate('3.5');
-    setPurpose('education');
-    setConditions('Quick repayment expected. Flexible terms for family member.');
-    setPaymentMethod('upi');
-    setPaymentDetails({
-      upiId: 'success@razorpay',
-      isValid: true
-    });
-    
-    toast({
-      title: "Form Autofilled",
-      description: "Sample loan offer data has been filled in. You can modify as needed.",
-    });
   };
 
   const calculateTotalReturn = () => {
@@ -192,7 +172,7 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
           conditions: conditions || '', // Ensure conditions is not null
           payment_method: paymentMethod,
           smart_contract: smartContract,
-          status: 'pending',
+          status: 'pending', // Loan offer pending borrower acceptance
           data: {
             paymentDetails: paymentDetails,
             lenderSignedAt: new Date().toISOString(),
@@ -265,21 +245,10 @@ const CreateLoanModal = ({ open, onOpenChange }: CreateLoanModalProps) => {
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">          <DialogHeader>
-            <div className="flex justify-between items-center">
-              <DialogTitle className="text-2xl font-bold flex items-center">
-                <DollarSign className="mr-2 h-6 w-6 text-green-600" />
-                Create Loan Agreement
-              </DialogTitle>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleAutofill}
-                className="flex items-center gap-1"
-              >
-                <Wand2 className="h-3 w-3" />
-                Autofill
-              </Button>
-            </div>
+            <DialogTitle className="text-2xl font-bold flex items-center">
+              <DollarSign className="mr-2 h-6 w-6 text-green-600" />
+              Create Loan Agreement
+            </DialogTitle>
           </DialogHeader>
           
           <div className="space-y-6">
