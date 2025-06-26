@@ -25,7 +25,9 @@ export const processContractToIpfs = async (
   contractData: ContractData
 ): Promise<ContractIpfsResult> => {
   try {
-    console.log('Processing contract to IPFS for agreement:', agreementData.id);    // Generate PDF and upload to IPFS
+    console.log('Processing contract to IPFS for agreement:', agreementData.id);
+    
+    // Generate PDF and upload to IPFS
     const ipfsResult = await generateAndUploadContract(contractData);
 
     if (!ipfsResult.success) {
@@ -34,25 +36,26 @@ export const processContractToIpfs = async (
 
     // Store IPFS data in database
     try {
-      const { error: rpcError } = await supabase.rpc('update_contract_ipfs_data', {
-        p_agreement_id: agreementData.id,
-        p_ipfs_cid: ipfsResult.cid,
-        p_ipfs_url: ipfsResult.gatewayUrl,
-        p_pdf_size: ipfsResult.size
-      });
+      const { error: updateError } = await supabase
+        .from('loan_agreements')
+        .update({
+          contract_ipfs_cid: ipfsResult.cid,
+          contract_ipfs_url: ipfsResult.gatewayUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', agreementData.id);
 
-      if (rpcError) {
-        throw rpcError;
+      if (updateError) {
+        throw updateError;
       }
 
       console.log('IPFS contract data stored in database successfully:', {
         agreementId: agreementData.id,
         cid: ipfsResult.cid,
-        url: ipfsResult.gatewayUrl,
-        size: ipfsResult.size
+        url: ipfsResult.gatewayUrl
       });
-    } catch (rpcError) {
-      console.warn('Database update failed, but IPFS upload succeeded:', rpcError);
+    } catch (updateError) {
+      console.warn('Database update failed, but IPFS upload succeeded:', updateError);
       
       // Fallback: try basic update to avoid complete failure
       try {
@@ -70,8 +73,7 @@ export const processContractToIpfs = async (
 
     console.log('Contract successfully uploaded to IPFS and stored in database:', {
       cid: ipfsResult.cid,
-      url: ipfsResult.gatewayUrl,
-      size: ipfsResult.size
+      url: ipfsResult.gatewayUrl
     });
 
     return {

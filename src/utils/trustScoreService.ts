@@ -48,7 +48,7 @@ export class TrustScoreService {
   static async initializeUserTrustScore(userId: string): Promise<TrustScore | null> {
     try {
       const { data, error } = await supabase.rpc('initialize_user_trust_score', {
-        p_user_id: userId
+        user_id: userId
       });
 
       if (error) throw error;
@@ -66,39 +66,40 @@ export class TrustScoreService {
   static async calculateTrustScore(userId: string): Promise<TrustScoreCalculation | null> {
     try {
       const { data, error } = await supabase.rpc('calculate_trust_score', {
-        p_user_id: userId
+        user_id: userId
       });
 
       if (error) throw error;
+      if (!data) return null;
 
       // Convert the returned JSONB to our TypeScript interface
       const calculation: TrustScoreCalculation = {
         userId,
         currentScore: data.previous_score || 300,
-        newScore: data.overall_score,
+        newScore: data.overall_score || 300,
         breakdown: {
           repayment: {
-            score: data.repayment_score,
+            score: data.repayment_score || 0,
             weight: TRUST_SCORE_WEIGHTS.repayment,
             factors: this.getRepaymentFactors(data)
           },
           performance: {
-            score: data.performance_score,
+            score: data.performance_score || 0,
             weight: TRUST_SCORE_WEIGHTS.performance,
             factors: this.getPerformanceFactors(data)
           },
           activity: {
-            score: data.activity_score,
+            score: data.activity_score || 0,
             weight: TRUST_SCORE_WEIGHTS.activity,
             factors: this.getActivityFactors(data)
           },
           social: {
-            score: data.social_score,
+            score: data.social_score || 0,
             weight: TRUST_SCORE_WEIGHTS.social,
             factors: this.getSocialFactors(data)
           },
           verification: {
-            score: data.verification_score,
+            score: data.verification_score || 0,
             weight: TRUST_SCORE_WEIGHTS.verification,
             factors: this.getVerificationFactors(data)
           }
@@ -119,15 +120,17 @@ export class TrustScoreService {
   static async recordTrustScoreEvent(
     userId: string,
     eventType: TrustScoreEventType,
-    eventReferenceId?: string,
-    changeReason?: string
+    changeAmount: number,
+    changeReason: string,
+    eventReferenceId?: string
   ): Promise<boolean> {
     try {
       const { error } = await supabase.rpc('record_trust_score_event', {
-        p_user_id: userId,
-        p_event_type: eventType,
-        p_event_reference_id: eventReferenceId,
-        p_change_reason: changeReason
+        user_id: userId,
+        event_type: eventType,
+        change_amount: changeAmount,
+        change_reason: changeReason,
+        event_reference_id: eventReferenceId
       });
 
       if (error) throw error;
@@ -178,7 +181,7 @@ export class TrustScoreService {
     try {
       const { data, error } = await supabase
         .from('user_trust_scores')
-        .select('user_id, overall_score, score_tier, average_rating, total_ratings_received')
+        .select('*')
         .in('user_id', userIds);
 
       if (error) throw error;

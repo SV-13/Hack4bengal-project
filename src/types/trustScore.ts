@@ -4,42 +4,37 @@
 
 export interface TrustScore {
   id: string;
-  user_id: string;
-  overall_score: number;
-  repayment_score: number;
-  performance_score: number;
-  activity_score: number;
-  social_score: number;
-  verification_score: number;
-  score_tier: 'bronze' | 'silver' | 'gold' | 'platinum';
-  total_loans_as_borrower: number;
-  total_loans_as_lender: number;
-  successful_loans_as_borrower: number;
-  successful_loans_as_lender: number;
-  on_time_payments: number;
-  late_payments: number;
-  total_payments_made: number;
-  average_rating: number;
-  total_ratings_received: number;
-  account_age_days: number;
-  profile_completeness_percentage: number;
-  verification_level: number;
-  last_calculated_at: string;
-  created_at: string;
-  updated_at: string;
+  user_id: string | null;
+  overall_score: number | null;
+  repayment_score: number | null;
+  performance_score: number | null;
+  activity_score: number | null;
+  social_score: number | null;
+  verification_score: number | null;
+  base_score: number | null;
+  community_rating_score: number | null;
+  loan_performance_score: number | null;
+  payment_history_score: number | null;
+  total_score: number | null;
+  score_level: string | null;
+  score_tier: string | null;
+  last_calculated_at: string | null;
+  last_updated: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 export interface TrustScoreHistory {
   id: string;
-  user_id: string;
-  previous_score: number;
-  new_score: number;
-  change_amount: number;
-  change_reason: string;
-  event_type: TrustScoreEventType;
-  event_reference_id?: string;
-  score_breakdown: TrustScoreBreakdown;
-  created_at: string;
+  user_id: string | null;
+  previous_score: number | null;
+  new_score: number | null;
+  old_score: number | null;
+  change_amount: number | null;
+  change_reason: string | null;
+  event_type: string | null;
+  event_reference_id: string | null;
+  created_at: string | null;
 }
 
 export interface TrustScoreBreakdown {
