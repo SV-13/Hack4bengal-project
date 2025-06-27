@@ -56,12 +56,21 @@ export type Database = {
           borrower_email: string | null
           borrower_id: string | null
           borrower_name: string | null
+          borrower_signature: string | null
+          blockchain_tx_hash: string | null
           conditions: string | null
+          contract_ipfs_cid: string | null
+          contract_ipfs_url: string | null
+          contract_pdf_generated_at: string | null
+          contract_pdf_size: number | null
           created_at: string | null
           duration_months: number
           id: string
           interest_rate: number | null
-          lender_id: string
+          lender_email: string | null
+          lender_id: string | null
+          lender_name: string | null
+          lender_signature: string | null
           payment_method: string | null
           purpose: string | null
           smart_contract: boolean | null
@@ -73,12 +82,21 @@ export type Database = {
           borrower_email?: string | null
           borrower_id?: string | null
           borrower_name?: string | null
+          borrower_signature?: string | null
+          blockchain_tx_hash?: string | null
           conditions?: string | null
+          contract_ipfs_cid?: string | null
+          contract_ipfs_url?: string | null
+          contract_pdf_generated_at?: string | null
+          contract_pdf_size?: number | null
           created_at?: string | null
           duration_months: number
           id?: string
           interest_rate?: number | null
-          lender_id: string
+          lender_email?: string | null
+          lender_id?: string | null
+          lender_name?: string | null
+          lender_signature?: string | null
           payment_method?: string | null
           purpose?: string | null
           smart_contract?: boolean | null
@@ -90,16 +108,79 @@ export type Database = {
           borrower_email?: string | null
           borrower_id?: string | null
           borrower_name?: string | null
+          borrower_signature?: string | null
+          blockchain_tx_hash?: string | null
           conditions?: string | null
+          contract_ipfs_cid?: string | null
+          contract_ipfs_url?: string | null
+          contract_pdf_generated_at?: string | null
+          contract_pdf_size?: number | null
           created_at?: string | null
           duration_months?: number
           id?: string
           interest_rate?: number | null
-          lender_id?: string
+          lender_email?: string | null
+          lender_id?: string | null
+          lender_name?: string | null
+          lender_signature?: string | null
           payment_method?: string | null
           purpose?: string | null
           smart_contract?: boolean | null
           status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      loan_requests: {
+        Row: {
+          amount: number
+          borrower_id: string | null
+          collateral_description: string | null
+          created_at: string | null
+          credit_score: number | null
+          description: string | null
+          employment_status: string | null
+          expires_at: string | null
+          id: string
+          interest_rate: number | null
+          monthly_income: number | null
+          purpose: string
+          status: string | null
+          term_months: number
+          updated_at: string | null
+        }
+        Insert: {
+          amount: number
+          borrower_id?: string | null
+          collateral_description?: string | null
+          created_at?: string | null
+          credit_score?: number | null
+          description?: string | null
+          employment_status?: string | null
+          expires_at?: string | null
+          id?: string
+          interest_rate?: number | null
+          monthly_income?: number | null
+          purpose: string
+          status?: string | null
+          term_months: number
+          updated_at?: string | null
+        }
+        Update: {
+          amount?: number
+          borrower_id?: string | null
+          collateral_description?: string | null
+          created_at?: string | null
+          credit_score?: number | null
+          description?: string | null
+          employment_status?: string | null
+          expires_at?: string | null
+          id?: string
+          interest_rate?: number | null
+          monthly_income?: number | null
+          purpose?: string
+          status?: string | null
+          term_months?: number
           updated_at?: string | null
         }
         Relationships: []
@@ -185,6 +266,45 @@ export type Database = {
         }
         Relationships: []
       }
+      phone_verifications: {
+        Row: {
+          attempts_count: number | null
+          created_at: string | null
+          expires_at: string | null
+          id: string
+          is_verified: boolean | null
+          last_attempt_at: string | null
+          phone_number: string
+          user_id: string | null
+          verification_code: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          attempts_count?: number | null
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          is_verified?: boolean | null
+          last_attempt_at?: string | null
+          phone_number: string
+          user_id?: string | null
+          verification_code?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          attempts_count?: number | null
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          is_verified?: boolean | null
+          last_attempt_at?: string | null
+          phone_number?: string
+          user_id?: string | null
+          verification_code?: string | null
+          verified_at?: string | null
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           agreement_id: string
@@ -226,12 +346,154 @@ export type Database = {
           },
         ]
       }
+      user_trust_scores: {
+        Row: {
+          activity_score: number | null
+          base_score: number | null
+          community_rating_score: number | null
+          created_at: string | null
+          id: string
+          last_calculated_at: string | null
+          last_updated: string | null
+          loan_performance_score: number | null
+          overall_score: number | null
+          payment_history_score: number | null
+          performance_score: number | null
+          repayment_score: number | null
+          score_level: string | null
+          score_tier: string | null
+          social_score: number | null
+          total_score: number | null
+          updated_at: string | null
+          user_id: string | null
+          verification_score: number | null
+        }
+        Insert: {
+          activity_score?: number | null
+          base_score?: number | null
+          community_rating_score?: number | null
+          created_at?: string | null
+          id?: string
+          last_calculated_at?: string | null
+          last_updated?: string | null
+          loan_performance_score?: number | null
+          overall_score?: number | null
+          payment_history_score?: number | null
+          performance_score?: number | null
+          repayment_score?: number | null
+          score_level?: string | null
+          score_tier?: string | null
+          social_score?: number | null
+          total_score?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+          verification_score?: number | null
+        }
+        Update: {
+          activity_score?: number | null
+          base_score?: number | null
+          community_rating_score?: number | null
+          created_at?: string | null
+          id?: string
+          last_calculated_at?: string | null
+          last_updated?: string | null
+          loan_performance_score?: number | null
+          overall_score?: number | null
+          payment_history_score?: number | null
+          performance_score?: number | null
+          repayment_score?: number | null
+          score_level?: string | null
+          score_tier?: string | null
+          social_score?: number | null
+          total_score?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+          verification_score?: number | null
+        }
+        Relationships: []
+      }
+      trust_score_history: {
+        Row: {
+          change_amount: number | null
+          change_reason: string | null
+          created_at: string | null
+          event_reference_id: string | null
+          event_type: string | null
+          id: string
+          new_score: number | null
+          old_score: number | null
+          previous_score: number | null
+          user_id: string | null
+        }
+        Insert: {
+          change_amount?: number | null
+          change_reason?: string | null
+          created_at?: string | null
+          event_reference_id?: string | null
+          event_type?: string | null
+          id?: string
+          new_score?: number | null
+          old_score?: number | null
+          previous_score?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          change_amount?: number | null
+          change_reason?: string | null
+          created_at?: string | null
+          event_reference_id?: string | null
+          event_type?: string | null
+          id?: string
+          new_score?: number | null
+          old_score?: number | null
+          previous_score?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      initialize_user_trust_score: {
+        Args: {
+          user_id: string
+        }
+        Returns: {
+          id: string
+          user_id: string
+          overall_score: number
+          created_at: string
+        }
+      }
+      calculate_trust_score: {
+        Args: {
+          user_id: string
+        }
+        Returns: {
+          overall_score: number
+          repayment_score: number
+          performance_score: number
+          activity_score: number
+          social_score: number
+          verification_score: number
+          previous_score: number
+        }
+      }
+      record_trust_score_event: {
+        Args: {
+          user_id: string
+          event_type: string
+          change_amount: number
+          change_reason: string
+          event_reference_id?: string
+        }
+        Returns: {
+          id: string
+          created_at: string
+        }
+      }
     }
     Enums: {
       [_ in never]: never

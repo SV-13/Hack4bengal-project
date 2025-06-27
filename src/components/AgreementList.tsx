@@ -11,6 +11,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from "@/utils/currency";
 import { downloadContract, ContractData } from "@/utils/contractGenerator";
+import { processContractToIpfs, prepareContractData, getContractFromIpfs, hasContractInIpfs } from "@/utils/contractIpfsUtils";
+import { PaymentFacilitationModal } from "./PaymentFacilitationModal";
 import { 
   Calendar, 
   DollarSign, 
@@ -22,7 +24,11 @@ import {
   Eye,
   Edit,
   CreditCard,
-  Download
+  Download,
+  ArrowUpRight,
+  Cloud,
+  ExternalLink,
+  Loader2
 } from "lucide-react";
 
 interface LoanAgreement {
@@ -54,12 +60,14 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
   const [selectedTab, setSelectedTab] = useState<string>('all');
   const [selectedAgreement, setSelectedAgreement] = useState<LoanAgreement | null>(null);
   const [showActionDialog, setShowActionDialog] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [actionType, setActionType] = useState<'accept' | 'reject' | 'payment' | 'details' | 'edit' | 'download'>('details');
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentReference, setPaymentReference] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [paymentReference, setPaymentReference] = useState('');  const [loading, setLoading] = useState(false);
   const [borrowerData, setBorrowerData] = useState<any>(null);
   const [lenderData, setLenderData] = useState<any>(null);
+  const [ipfsContractMap, setIpfsContractMap] = useState<Record<string, boolean>>({});
+  const [ipfsLoading, setIpfsLoading] = useState<Record<string, boolean>>({});
 
   // Fetch user profiles when an agreement is selected
   useEffect(() => {
@@ -135,7 +143,6 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
       return lenderData?.name || 'Lender';
     }
   };
-
   const handleAction = async (agreement: LoanAgreement, action: 'accept' | 'reject' | 'payment' | 'details' | 'edit' | 'download') => {
     setSelectedAgreement(agreement);
     setActionType(action);
@@ -147,6 +154,97 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
     
     setShowActionDialog(true);
   };
+
+  // IPFS Contract Management Functions
+  const checkIpfsContractStatus = async (agreementId: string) => {
+    try {
+      const hasContract = await hasContractInIpfs(agreementId);
+      setIpfsContractMap(prev => ({ ...prev, [agreementId]: hasContract }));
+      return hasContract;
+    } catch (error) {
+      console.error('Error checking IPFS contract status:', error);
+      return false;
+    }
+  };
+
+  const handleViewIpfsContract = async (agreement: LoanAgreement) => {
+    try {
+      const contractUrl = await getContractFromIpfs(agreement.id);
+      if (contractUrl) {
+        window.open(contractUrl, '_blank');
+        toast({
+          title: "📄 Opening IPFS Contract",
+          description: "Contract is loading from IPFS...",
+        });
+      } else {
+        toast({
+          title: "Contract Not Found",
+          description: "No IPFS contract found for this agreement.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error viewing IPFS contract:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load contract from IPFS.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleGenerateIpfsContract = async (agreement: LoanAgreement) => {
+    try {
+      setIpfsLoading(prev => ({ ...prev, [agreement.id]: true }));
+      
+      toast({
+        title: "🔄 Generating Contract",
+        description: "Creating digital contract and uploading to IPFS...",
+      });
+
+      // Prepare contract data
+      const contractData = prepareContractData(
+        agreement,
+        { name: lenderData?.name || 'Lender', address: 'Address to be provided' },
+        { name: borrowerData?.name || agreement.borrower_name || 'Borrower', address: 'Address to be provided' }
+      );
+
+      // Process contract to IPFS
+      const ipfsResult = await processContractToIpfs(agreement, contractData);
+
+      if (ipfsResult.success && ipfsResult.ipfsResult) {
+        setIpfsContractMap(prev => ({ ...prev, [agreement.id]: true }));
+        toast({
+          title: "✅ Contract Uploaded to IPFS",
+          description: `Signed agreement stored permanently. CID: ${ipfsResult.ipfsResult.cid.substring(0, 12)}...`,
+        });
+      } else {
+        throw new Error(ipfsResult.error || 'IPFS upload failed');
+      }
+    } catch (error) {
+      console.error('Error generating IPFS contract:', error);
+      toast({
+        title: "Error",
+        description: "Failed to upload contract to IPFS. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIpfsLoading(prev => ({ ...prev, [agreement.id]: false }));
+    }
+  };
+
+  // Load IPFS contract status for all agreements
+  useEffect(() => {
+    const loadIpfsStatus = async () => {
+      for (const agreement of agreements) {
+        await checkIpfsContractStatus(agreement.id);
+      }
+    };
+
+    if (agreements.length > 0) {
+      loadIpfsStatus();
+    }
+  }, [agreements]);
 
   const executeAction = async () => {
     if (!selectedAgreement) return;
@@ -430,9 +528,22 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
                               </span>
                               <span>{agreement.interest_rate}% interest</span>
                             </CardDescription>
-                          </div>
-                          <div className="flex items-center gap-2">
+                          </div>                          <div className="flex items-center gap-2">
                             {getStatusBadge(agreement.status)}
+                            {/* IPFS Status Indicator */}
+                            {(agreement.status === 'accepted' || agreement.status === 'active' || agreement.status === 'completed') && (
+                              ipfsContractMap[agreement.id] ? (
+                                <Badge variant="outline" className="border-blue-200 text-blue-700 bg-blue-50">
+                                  <Cloud className="w-3 h-3 mr-1" />
+                                  IPFS
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="border-gray-200 text-gray-600">
+                                  <Cloud className="w-3 h-3 mr-1" />
+                                  No IPFS
+                                </Badge>
+                              )
+                            )}
                           </div>
                         </div>
                       </CardHeader>
@@ -490,6 +601,20 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
                               </>
                             )}
 
+                            {agreement.status === 'accepted' && role === 'lender' && (
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedAgreement(agreement);
+                                  setShowPaymentModal(true);
+                                }}
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                <ArrowUpRight className="w-4 h-4 mr-1" />
+                                Fund Loan
+                              </Button>
+                            )}
+
                             {agreement.status === 'active' && role === 'borrower' && (
                               <Button
                                 size="sm"
@@ -499,9 +624,7 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
                                 <CreditCard className="w-4 h-4 mr-1" />
                                 Make Payment
                               </Button>
-                            )}
-
-                            {agreement.status === 'pending' && role === 'lender' && (
+                            )}                            {agreement.status === 'pending' && role === 'lender' && (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -511,6 +634,48 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
                                 Edit
                               </Button>
                             )}
+
+                            {/* IPFS Contract Actions */}
+                            {(agreement.status === 'accepted' || agreement.status === 'active' || agreement.status === 'completed') && (
+                              <>
+                                {ipfsContractMap[agreement.id] ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleViewIpfsContract(agreement)}
+                                    className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                                  >
+                                    <Cloud className="w-4 h-4 mr-1" />
+                                    View on IPFS
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleGenerateIpfsContract(agreement)}
+                                    disabled={ipfsLoading[agreement.id]}
+                                    className="border-purple-200 text-purple-700 hover:bg-purple-50"
+                                  >
+                                    {ipfsLoading[agreement.id] ? (
+                                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                    ) : (
+                                      <Cloud className="w-4 h-4 mr-1" />
+                                    )}
+                                    Upload to IPFS
+                                  </Button>
+                                )}
+                              </>
+                            )}
+
+                            {/* Download PDF Button */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleAction(agreement, 'download')}
+                            >
+                              <Download className="w-4 h-4 mr-1" />
+                              Download PDF
+                            </Button>
                           </div>
                         </div>
                       </CardContent>
@@ -624,8 +789,18 @@ const AgreementList = ({ agreements, currentUserId, onUpdate }: AgreementListPro
               </Button>
             )}
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </DialogContent>      </Dialog>
+
+      {/* Payment Facilitation Modal */}
+      <PaymentFacilitationModal
+        open={showPaymentModal}
+        onOpenChange={setShowPaymentModal}
+        agreement={selectedAgreement}
+        onPaymentCompleted={() => {
+          onUpdate();
+          setShowPaymentModal(false);
+        }}
+      />
     </Card>
   );
 };

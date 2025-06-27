@@ -9,8 +9,10 @@ import { useToast } from "@/components/ui/use-toast";
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from "@/utils/currency";
 import { downloadContract, ContractData } from "@/utils/contractGenerator";
+import { processContractToIpfs, prepareContractData } from "@/utils/contractIpfsUtils";
 import { claimRequest } from "@/utils/supabaseRPC";
 import { notifyLoanRequestClaimed } from "@/utils/emailNotifications";
+import { notifyLoanApproved, notifyFundingConfirmed } from "@/utils/notificationIntegration";
 import { useAuth } from "@/hooks/useAuth";
 import { 
   CheckCircle, 
@@ -22,7 +24,9 @@ import {
   User,
   CreditCard,
   AlertTriangle,
-  Download
+  Download,
+  Cloud,
+  Loader2
 } from "lucide-react";
 
 interface LoanAcceptanceModalProps {
@@ -83,17 +87,17 @@ export const LoanAcceptanceModal = ({
         }
       } catch (rpcError) {
         console.warn('RPC function not available, falling back to direct update:', rpcError);
-        
-        // Fallback to direct database update - claim the loan request by adding lender info
+          // Fallback to direct database update - claim the loan request by adding lender info
         const { error: updateError } = await supabase
           .from('loan_agreements')
           .update({
             lender_id: user.id,
-            status: 'accepted', // Change status to accepted (claimed by lender)
+            status: 'accepted', // Accepted by borrower, now ready for funding
+            borrower_signature: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
           .eq('id', agreementId)
-          .is('lender_id', null); // Only update if it's still unclaimed
+          .eq('status', 'pending'); // Only update if still pending
 
         if (updateError) throw updateError;
 
@@ -121,29 +125,79 @@ export const LoanAcceptanceModal = ({
           requestId: agreementId
         });
       } catch (emailError) {
-        console.warn('Email notification failed:', emailError);
-        // Don't fail the entire process if email fails
+        console.warn('Email notification failed:', emailError);        // Don't fail the entire process if email fails
+      }
+
+      // Create notification for lender
+      try {
+        await supabase.from('notifications').insert({
+          user_id: agreement.lender_id,
+          type: 'loan_accepted',
+          title: 'Loan Agreement Accepted! 🎉',
+          message: `${agreement.borrower_name} has accepted your loan offer of ${formatCurrency(agreement.amount)}. You can now proceed with funding.`,
+          agreement_id: agreementId,
+          read: false
+        });      } catch (notificationError) {
+        console.warn('Notification creation failed:', notificationError);
+      }      // Notify via integrated notification system
+      try {
+        await notifyLoanApproved({
+          agreementId: agreementId,
+          borrowerName: claimResult.borrower_name || agreement.borrower_name,
+          borrowerEmail: agreement.borrower_email || '',
+          borrowerId: agreement.borrower_id || '',
+          lenderName: user.name || 'Unknown',
+          lenderEmail: user.email || '',
+          lenderId: user.id,
+          amount: claimResult.amount || agreement.amount,
+          duration: claimResult.duration || agreement.duration_months,
+          purpose: agreement.purpose
+        });
+      } catch (notifyError) {
+        console.warn('Integrated notification failed:', notifyError);
+      }
+
+      // Generate PDF contract and upload to IPFS
+      try {
+        toast({
+          title: "🔄 Generating Contract",
+          description: "Creating digital contract and uploading to IPFS...",
+        });
+
+        // Prepare contract data
+        const contractData = prepareContractData(
+          { ...agreement, id: agreementId },
+          { name: user.name || 'Lender', address: 'Address to be provided' },
+          { name: agreement.borrower_name || 'Borrower', address: 'Address to be provided' }
+        );
+
+        // Process contract to IPFS
+        const ipfsResult = await processContractToIpfs(
+          { ...agreement, id: agreementId },
+          contractData
+        );
+
+        if (ipfsResult.success && ipfsResult.ipfsResult) {
+          toast({
+            title: "✅ Contract Uploaded to IPFS",
+            description: `Signed agreement stored permanently. CID: ${ipfsResult.ipfsResult.cid.substring(0, 12)}...`,
+          });
+        } else {
+          console.warn('IPFS upload failed:', ipfsResult.error);
+          toast({
+            title: "⚠️ Contract Generation Warning",
+            description: "Agreement accepted but IPFS upload failed. Contract will be available for download.",
+            variant: "destructive",
+          });
+        }
+      } catch (ipfsError) {
+        console.warn('IPFS contract generation failed:', ipfsError);
+        // Don't fail the entire process if IPFS fails
       }
 
       toast({
-        title: "Loan Request Accepted",
-        description: "You have successfully accepted this loan request. The borrower has been notified and can now review the terms.",
-      });
-
-      onAccepted?.();
-      onOpenChange(false);
-      await supabase.from('notifications').insert({
-        user_id: agreement.lender_id,
-        type: 'loan_accepted',
-        title: 'Loan Agreement Accepted! 🎉',
-        message: `${agreement.borrower_name} has accepted your loan offer of ${formatCurrency(agreement.amount)}. The agreement is now active.`,
-        agreement_id: agreementId,
-        read: false
-      });
-
-      toast({
         title: "Agreement Accepted! 🎉",
-        description: "The loan agreement is now active. PDF contract has been downloaded.",
+        description: "You have accepted this loan offer. The lender will be notified to proceed with funding.",
       });
 
       onAccepted?.();
@@ -164,15 +218,16 @@ export const LoanAcceptanceModal = ({
   const handleReject = async () => {
     setRejecting(true);
 
-    try {
-      // Update agreement status to rejected
+    try {      // Update agreement status to rejected
       const { error } = await supabase
         .from('loan_agreements')
         .update({
           status: 'rejected',
-          borrower_signature: new Date().toISOString() // Sign the rejection
+          borrower_signature: new Date().toISOString(), // Record rejection timestamp
+          updated_at: new Date().toISOString()
         })
-        .eq('id', agreementId);
+        .eq('id', agreementId)
+        .eq('status', 'pending'); // Only reject if still pending
 
       if (error) throw error;
 

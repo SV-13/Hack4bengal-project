@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import { formatCurrency } from './currency';
 import { Contract, JsonRpcSigner, parseEther, ContractFactory, Interface } from 'ethers';
+import { uploadPdfToIpfs, IpfsUploadResult } from './ipfsService';
 
 export interface ContractData {
   lenderName: string;
@@ -43,6 +44,58 @@ export const downloadContract = (data: ContractData) => {
   //   throw new Error('Cannot generate PDF: Both parties must sign first');
   // }
 
+  const pdf = generatePdfDocument(data);
+  
+  // Generate filename with agreement ID
+  const fileName = `loan_agreement_${data.agreementId}_signed.pdf`;
+  
+  // Download the PDF
+  pdf.save(fileName);
+};
+
+/**
+ * Generates PDF and uploads to IPFS for permanent storage
+ * @param data Contract data with signature information
+ * @returns Promise<IpfsUploadResult> IPFS upload result with CID
+ */
+export const generateAndUploadContract = async (data: ContractData): Promise<IpfsUploadResult> => {
+  try {
+    const pdf = generatePdfDocument(data);
+    
+    // Convert PDF to Uint8Array for IPFS upload
+    const pdfArrayBuffer = pdf.output('arraybuffer');
+    const pdfBuffer = new Uint8Array(pdfArrayBuffer);
+    
+    // Upload to IPFS
+    const fileName = `loan_agreement_${data.agreementId}_signed.pdf`;
+    const ipfsResult = await uploadPdfToIpfs(pdfBuffer, {
+      agreementId: data.agreementId || '',
+      fileName,
+      fileType: 'application/pdf',
+      uploadedBy: data.lenderName,
+      uploadedAt: new Date().toISOString(),
+      lenderName: data.lenderName,
+      borrowerName: data.borrowerName,
+      amount: data.amount,
+      signatures: {
+        lender: !!data.lenderSignedAt,
+        borrower: !!data.borrowerSignedAt
+      }
+    });
+    
+    return ipfsResult;
+  } catch (error) {
+    console.error('Error generating and uploading contract to IPFS:', error);
+    throw new Error(`Failed to upload contract to IPFS: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
+/**
+ * Generates the PDF document (internal function)
+ * @param data Contract data
+ * @returns jsPDF instance
+ */
+const generatePdfDocument = (data: ContractData): jsPDF => {
   const pdf = new jsPDF();
   const title = "DIGITALLY SIGNED LOAN AGREEMENT";
   
@@ -131,17 +184,12 @@ export const downloadContract = (data: ContractData) => {
   } else {
     pdf.text(`Status: Pending signature`, 30, 254);
   }
-  
-  // Legal Notice
+    // Legal Notice
   pdf.setFontSize(8);
   pdf.text(`This document was generated electronically and is legally binding under Indian IT Act 2000.`, 20, 270);
   pdf.text(`Both parties have digitally signed this agreement using secure authentication.`, 20, 276);
   
-  // Generate filename with agreement ID
-  const fileName = `loan_agreement_${data.agreementId}_signed.pdf`;
-  
-  // Download the PDF
-  pdf.save(fileName);
+  return pdf;
 };
 
 // Smart contract ABI for LoanAgreementFactory (from compiled Solidity)
